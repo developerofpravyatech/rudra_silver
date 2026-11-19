@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply m-0 p-0 min-h-screen text-xs transition-colors duration-150;
+  }
+
+  html.dark body {
+    @apply text-slate-100 bg-[#080a0d];
+  }
+
+  html.light body,
+  html:not(.dark) body {
+    @apply text-slate-900 bg-[#f4f6f9];
+  }
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+html.dark ::-webkit-scrollbar-track {
+  background: #0d1015;
+}
+html.dark ::-webkit-scrollbar-thumb {
+  background: #232b36;
+  border-radius: 3px;
+}
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #394556;
+}
+
+html.light ::-webkit-scrollbar-track,
+html:not(.dark) ::-webkit-scrollbar-track {
+  background: #e2e8f0;
+}
+html.light ::-webkit-scrollbar-thumb,
+html:not(.dark) ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+html.light ::-webkit-scrollbar-thumb:hover,
+html:not(.dark) ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Luxury card styles - Dark Mode (default) */
+.luxury-card {
+  background: linear-gradient(145deg, #131720 0%, #0d1016 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.luxury-card-gold {
+  background: linear-gradient(145deg, #171b25 0%, #0f131a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  box-shadow: 0 6px 24px -4px rgba(0, 0, 0, 0.6), 0 0 12px rgba(212, 175, 55, 0.06);
+}
+
+/* Luxury card styles - Light Mode */
+html.light .luxury-card,
+html:not(.dark) .luxury-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 12px -2px rgba(0, 0, 0, 0.07), 0 1px 4px 0 rgba(0, 0, 0, 0.04) !important;
+  color: #0f172a;
+}
+
+html.light .luxury-card-gold,
+html:not(.dark) .luxury-card-gold {
+  background: linear-gradient(145deg, #fffdf2 0%, #fefcf3 100%) !important;
+  border: 1px solid rgba(212, 175, 55, 0.4) !important;
+  box-shadow: 0 4px 20px -3px rgba(212, 175, 55, 0.18), 0 1px 4px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Nested luxury-card inside luxury-card in light mode */
+html.light .luxury-card .luxury-card,
+html:not(.dark) .luxury-card .luxury-card {
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04) !important;
+}
+
+html.light .luxury-card .luxury-card-gold,
+html:not(.dark) .luxury-card .luxury-card-gold {
+  background: linear-gradient(145deg, #fffbea 0%, #fff8e1 100%) !important;
+  border: 1px solid rgba(212, 175, 55, 0.35) !important;
+}
+
+.gold-gradient-text {
+  background: linear-gradient(135deg, #fff7d6 0%, #d4af37 50%, #aa8218 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.light .gold-gradient-text,
+html:not(.dark) .gold-gradient-text {
+  background: linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.silver-gradient-text {
+  background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 50%, #94a3b8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+html.light .silver-gradient-text,
+html:not(.dark) .silver-gradient-text {
+  background: linear-gradient(135deg, #0f172a 0%, #334155 50%, #64748b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.font-script {
+  font-family: 'Great Vibes', cursive;
+}
