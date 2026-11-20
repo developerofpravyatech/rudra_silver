@@ -1,7 +1,75 @@
-import { Account, InventoryTag, DailyRates, DailySummary } from '../types';
+import { Account, InventoryTag, DailyRates, DailySummary, AuthUser, PaginatedUsers } from '../types';
 
 const API_BASE = '/api/v1';
 
+export async function fetchSalesOverview(range: 'today' | '7days' | '30days'): Promise<{
+  range: string;
+  points: { label: string; total: number; paid: number; pending: number }[];
+  totals: { total: number; paid: number; pending: number; count: number };
+}> {
+  const res = await fetch(`${API_BASE}/sales/overview?range=${range}`);
+  if (!res.ok) throw new Error('Failed to load sales overview');
+  return res.json();
+}
+export async function fetchDashboardSummary(): Promise<{
+  today_sales: number;
+  today_sales_pct: number;
+  total_invoices: number;
+  total_invoices_pct: number;
+  silver_sold: number;
+  silver_sold_pct: number;
+  silver_rate: number;
+  silver_rate_pct: number;
+}> {
+  const res = await fetch(`${API_BASE}/dashboard/summary`);
+  if (!res.ok) throw new Error('Failed to load dashboard summary');
+  return res.json();
+}
+export async function fetchInvoiceDetail(id: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/invoices/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to load invoice');
+  return res.json();
+}
+export async function fetchRecentInvoices(limit = 5): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/invoices?limit=${limit}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to load invoices');
+  const data = await res.json();
+  return data.items || [];
+}
+export async function fetchDailyBalance(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/daily-balance`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load daily balance');
+  const data = await res.json();
+  return data.items || [];
+}
+export async function fetchTransactions(params: { page?: number; limit?: number; search?: string } = {}): Promise<{ items: any[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.search) qs.set('search', params.search);
+  const res = await fetch(`${API_BASE}/transactions?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load transactions');
+  return res.json();
+}
+export async function fetchStockStatus(params: { page?: number; limit?: number; search?: string } = {}): Promise<{ items: any[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.search) qs.set('search', params.search);
+  const res = await fetch(`${API_BASE}/stock-status?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load stock status');
+  return res.json();
+}
+
+export async function fetchStockStatusSummary(): Promise<any> {
+  const res = await fetch(`${API_BASE}/stock-status/summary`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load summary');
+  return res.json();
+}
 export async function fetchTodayRates(): Promise<DailyRates | null> {
   try {
     const res = await fetch(`${API_BASE}/rates/today`);
@@ -86,4 +154,192 @@ export async function submitVoucher(payload: any) {
     throw new Error(err.detail || 'Failed to submit voucher');
   }
   return await res.json();
+}
+
+// ─── Mobile Auth API ────────────────────────────────────────────────────────
+
+const getAuthHeaders = (): Record<string, string> => {
+  const token = localStorage.getItem('rudra_auth_token');
+  return token
+    ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+    : { 'Content-Type': 'application/json' };
+};
+
+export async function loginApi(
+  mobile: string,
+  password: string
+): Promise<{ access_token: string; user: AuthUser }> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mobile, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Login failed. Please check your credentials.');
+  }
+  return res.json();
+}
+
+export async function registerApi(data: {
+  name: string;
+  mobile: string;
+  password: string;
+}): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Registration failed. Mobile number might already be in use.');
+  }
+  return res.json();
+}
+
+export async function sendOtpApi(mobile: string): Promise<{ message: string; cooldown_seconds: number; dev_otp?: string }> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password/send-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mobile }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to dispatch verification OTP.');
+  }
+  return res.json();
+}
+
+export async function verifyOtpApi(mobile: string, otp: string): Promise<{ valid: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mobile, otp }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Invalid or expired OTP.');
+  }
+  return res.json();
+}
+
+export async function resetPasswordApi(
+  mobile: string,
+  otp: string,
+  new_password: string
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/auth/forgot-password/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mobile, otp, new_password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to reset password.');
+  }
+  return res.json();
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser | null> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function logoutApi(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+  } catch {
+    // ignore — token is cleared locally regardless
+  }
+}
+
+export async function deleteUserApi(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/users/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to delete user.');
+  }
+}
+export async function fetchUserList(params: {
+  search?: string;
+  role?: string;
+  is_active?: boolean;
+  page?: number;
+  per_page?: number;
+}): Promise<PaginatedUsers> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.role) qs.set('role', params.role);
+  if (params.is_active !== undefined) qs.set('is_active', String(params.is_active));
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.per_page !== undefined) qs.set('per_page', String(params.per_page));
+  const res = await fetch(`${API_BASE}/auth/users?${qs.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to fetch users directory.');
+  }
+  return res.json();
+}
+
+export async function createUserApi(data: {
+  name: string;
+  mobile: string;
+  password: string;
+  role: string;
+}): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/auth/users`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to create user account.');
+  }
+  return res.json();
+}
+
+export async function updateUserApi(
+  id: number,
+  data: Partial<{ name: string; mobile: string; role: string; is_active: boolean }>
+): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/auth/users/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to update user details.');
+  }
+  return res.json();
+}
+
+export async function toggleUserStatusApi(id: number, is_active: boolean): Promise<AuthUser> {
+  const res = await fetch(`${API_BASE}/auth/users/${id}/status`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ is_active }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Failed to change user status.');
+  }
+  return res.json();
 }

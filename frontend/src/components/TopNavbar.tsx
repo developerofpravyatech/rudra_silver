@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Home, FileText, Box, BarChart3, Settings, Sun, Moon, ChevronDown, Scale } from 'lucide-react';
-import { DailyRates } from '../types';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Home, FileText, Box, Settings, Sun, Moon, ChevronDown, Scale, LogOut, User as UserIcon, Shield } from 'lucide-react';
+import { DailyRates, AuthUser } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
 interface TopNavbarProps {
@@ -15,6 +16,9 @@ interface TopNavbarProps {
   onOpenDailyEntry: () => void;
   onOpenCatalogue: () => void;
   onOpenRateModal: () => void;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const TopNavbar: React.FC<TopNavbarProps> = ({
@@ -29,8 +33,29 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
   onOpenDailyEntry,
   onOpenCatalogue,
   onOpenRateModal,
+  currentUser,
+  onLogout,
+  onOpenSettings,
 }) => {
   const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const tabToPath: Record<string, string> = {
+    dashboard: '/',
+    billing: '/billing/new',
+    inventory: '/inventory',
+    settings: '/settings',
+  };
+
+  const pathToTab: Record<string, string> = {
+    '/': 'dashboard',
+    '/billing/new': 'billing',
+    '/inventory': 'inventory',
+    '/settings': 'settings',
+  };
+
+  const activeTopTabResolved = pathToTab[location.pathname] || activeTopTab;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -44,13 +69,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const userName = (typeof window !== 'undefined' && (localStorage.getItem('rudra_user_name') || localStorage.getItem('username'))) || 'Admin';
+  const displayName = currentUser?.name || (typeof window !== 'undefined' && (localStorage.getItem('rudra_user_name') || localStorage.getItem('username'))) || 'Admin';
+  const displayRole = currentUser?.role || 'ADMIN';
 
   const topNavTabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home, action: () => setActiveTopTab('dashboard') },
-    { id: 'billing', label: 'Billing', icon: FileText, action: onOpenNewBilling },
-    { id: 'inventory', label: 'Inventory', icon: Box, action: onOpenCatalogue },
-    { id: 'settings', label: 'Settings', icon: Settings, action: () => setActiveTopTab('settings') },
+    { id: 'dashboard', label: 'Dashboard', icon: Home, action: () => { setActiveTopTab('dashboard'); navigate('/'); } },
+    { id: 'billing', label: 'Billing', icon: FileText, action: () => { if (onOpenNewBilling) onOpenNewBilling(); navigate('/billing/new'); } },
+    { id: 'inventory', label: 'Inventory', icon: Box, action: () => { if (onOpenCatalogue) onOpenCatalogue(); navigate('/inventory'); } },
   ];
 
   return (
@@ -75,14 +100,13 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
             />
           </div>
         )}
-
       </div>
 
       {/* Center: Main Navigation Tabs */}
       <nav className="flex items-center bg-slate-100 dark:bg-[#131720] p-1 rounded-xl border border-slate-200 dark:border-white/[0.07] shadow-inner space-x-1">
         {topNavTabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTopTab === tab.id;
+          const isActive = activeTopTabResolved === tab.id;
           return (
             <button
               key={tab.id}
@@ -91,7 +115,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
                 if (tab.action) tab.action();
               }}
               className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 relative ${isActive
-                      ? 'bg-white text-amber-700 font-semibold border border-amber-300 shadow-sm dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+                ? 'bg-white text-amber-700 font-semibold border border-amber-300 shadow-sm dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/[0.04]'
                 }`}
             >
@@ -147,49 +171,79 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
           )}
         </button>
 
-        {/* Admin Profile Pill + Dropdown */}
+        {/* User Profile Pill + Dropdown */}
         <div className="relative" ref={userMenuRef}>
           <div
             className="flex items-center space-x-2.5 pl-2 border-l border-slate-200 dark:border-white/[0.08] cursor-pointer group"
             onClick={() => setUserMenuOpen((o) => !o)}
           >
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-amber-600 via-amber-400 to-amber-200 text-[#0b0e14] font-bold flex items-center justify-center text-xs shadow-md group-hover:ring-2 group-hover:ring-amber-400/40 transition">
-              {userName.charAt(0).toUpperCase()}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="hidden sm:flex flex-col text-left">
               <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition leading-tight">
-                {userName}
+                {displayName}
               </span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
-                Rudra Silver
-              </span>
+              <div className="flex items-center gap-1">
+                <span className={`text-[9px] font-semibold tracking-wider uppercase px-1 rounded ${displayRole === 'ADMIN'
+                    ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}>
+                  {displayRole}
+                </span>
+              </div>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition" />
           </div>
 
           {userMenuOpen && (
-            <div className="absolute right-0 mt-2 w-40 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#141822] shadow-lg py-1 z-50">
+            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#141822] shadow-xl py-2 z-50 text-xs">
+              {/* Profile Card Header */}
+              <div className="px-3 py-2 border-b border-slate-100 dark:border-white/[0.06] mb-1">
+                <p className="font-semibold text-slate-900 dark:text-white truncate">
+                  {displayName}
+                </p>
+                {currentUser?.mobile && (
+                  <p className="font-mono text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                    +91 {currentUser.mobile}
+                  </p>
+                )}
+                <div className="mt-1 flex items-center gap-1.5">
+                  <Shield className="w-3 h-3 text-amber-500" />
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                    {displayRole === 'ADMIN' ? 'Full Administrator Access' : 'Staff Access'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Settings Action */}
               <button
                 onClick={() => {
                   setUserMenuOpen(false);
-                  setActiveTopTab('settings');
+                  if (onOpenSettings) onOpenSettings();
+                  else setActiveTopTab('settings');
                 }}
-                className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition"
+                className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition flex items-center gap-2 cursor-pointer"
               >
-                Settings
+                <Settings className="w-3.5 h-3.5 text-slate-400" />
+                <span>Store Settings</span>
               </button>
+
+              {/* Logout Action */}
               <button
                 onClick={() => {
                   setUserMenuOpen(false);
-                  try {
-                    localStorage.removeItem('rudra_user_name');
-                    localStorage.removeItem('username');
-                  } catch (e) { }
-                  window.location.reload();
+                  if (onLogout) {
+                    onLogout();
+                  } else {
+                    localStorage.removeItem('rudra_auth_token');
+                    window.location.reload();
+                  }
                 }}
-                className="w-full text-left px-3 py-2 text-xs text-rose-600 dark:text-rose-400 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition"
+                className="w-full text-left px-3 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition flex items-center gap-2 cursor-pointer border-t border-slate-100 dark:border-white/[0.06] mt-1 pt-1.5"
               >
-                Logout
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
               </button>
             </div>
           )}
@@ -198,3 +252,4 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
     </header>
   );
 };
+

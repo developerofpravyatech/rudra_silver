@@ -23,7 +23,7 @@ export const AccountLedgerModal: React.FC<AccountLedgerModalProps> = ({ onClose,
         <div className="flex items-center space-x-2.5">
           <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" />
           <span className="font-display font-bold tracking-wider text-sm text-slate-900 dark:text-white">
-            Party Ledgers (F1) &bull; Triple-Currency Balance
+            Party Ledgers  &bull; Triple-Currency Balance
           </span>
         </div>
         <button
@@ -82,9 +82,8 @@ export const AccountLedgerModal: React.FC<AccountLedgerModalProps> = ({ onClose,
                       </td>
                       <td className="p-3 font-sans text-slate-500 dark:text-slate-400">{acc.mobile}</td>
                       <td
-                        className={`p-3 text-right font-bold ${
-                          acc.balance_inr < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                        }`}
+                        className={`p-3 text-right font-bold ${acc.balance_inr < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
                       >
                         ₹{acc.balance_inr.toLocaleString()}
                       </td>

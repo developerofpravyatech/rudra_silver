@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginPage } from './components/LoginPage';
+import { RegisterPage } from './components/RegisterPage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
 import { MainDashboard } from './components/MainDashboard';
 import { PosBillingModal } from './components/PosBillingModal';
 import { AccountLedgerModal } from './components/AccountLedgerModal';
+import { StockStatusPage } from './components/StockStatusPage';
+import { DailyBalancePage } from './components/DailyBalancePage';
+import { TransactionPage } from './components/TransactionPage';
 import { SilverWeighingModal } from './components/SilverWeighingModal';
 import { SilverRateModal } from './components/SilverRateModal';
 import { CategoryItemsModal } from './components/CategoryItemsModal';
@@ -17,9 +25,16 @@ import { UserManagementPage } from './components/UserManagementPage';
 import { SettingsPage } from './components/SettingsPage';
 import { useWeighingScale } from './hooks/useWeighingScale';
 import { fetchTodayRates, fetchDailySummary } from './services/api';
-import { DailyRates, DailySummary, BillingItem } from './types';
+import { DailyRates, DailySummary, BillingItem, AuthUser } from './types';
+import { Loader2 } from 'lucide-react';
 
-const MainApp: React.FC = () => {
+interface MainAppProps {
+  currentUser: AuthUser | null;
+  onLogout: () => void;
+}
+
+const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
+  const location = useLocation();
   const [rates, setRates] = useState<DailyRates | null>(null);
   const [summary, setSummary] = useState<DailySummary>({
     date: '2026-11-17',
@@ -43,6 +58,30 @@ const MainApp: React.FC = () => {
 
   const [activeTopTab, setActiveTopTab] = useState<string>('dashboard');
   const [activeSidebarTab, setActiveSidebarTab] = useState<string>('dashboard');
+
+  const pathToTab: Record<string, string> = {
+    '/': 'dashboard',
+    '/users': 'user-management',
+    '/billing/new': 'new-billing',
+    '/silver-weighing': 'silver-weighing',
+    '/item-master': 'item-master',
+    '/silver-rate': 'silver-rate',
+    '/inventory': 'inventory',
+    '/stock-status': 'stock-status',
+    '/daily-balance': 'daily-balance',
+    '/transactions': 'transactions',
+    '/party-ledgers': 'party-ledgers',
+    '/invoice-history': 'invoice-history',
+    '/reports': 'reports',
+    '/scale-connection': 'scale-connection',
+    '/settings': 'settings',
+  };
+
+  useEffect(() => {
+    const tab = pathToTab[location.pathname] || 'dashboard';
+    setActiveSidebarTab(tab);
+    setActiveTopTab(tab === 'dashboard' ? 'dashboard' : tab);
+  }, [location.pathname]);
   const [activeVoucherType, setActiveVoucherType] = useState<string>('SALE');
   const [preloadedBillingItem, setPreloadedBillingItem] = useState<Partial<BillingItem> | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -62,6 +101,10 @@ const MainApp: React.FC = () => {
     'silver-rate': 'Silver Rate',
     customers: 'Customers',
     inventory: 'Inventory',
+    'stock-status': 'Stock Status',
+    'daily-balance': 'Daily Balance',
+    'transactions': 'Transaction',
+    'party-ledgers': 'Party Ledgers',
     'invoice-history': 'Invoice History',
     reports: 'Reports',
     'scale-connection': 'Scale Connection',
@@ -197,6 +240,57 @@ const MainApp: React.FC = () => {
           />
         );
 
+      case 'party-ledgers':
+        return (
+          <AccountLedgerModal
+            onClose={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+            }}
+            isInline={true}
+          />
+        );
+
+      case 'stock-status':
+        return (
+          <StockStatusPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+            }}
+          />
+        );
+
+      case 'stock-status':
+        return (
+          <StockStatusPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+            }}
+          />
+        );
+
+      case 'daily-balance':
+        return (
+          <DailyBalancePage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+            }}
+          />
+        );
+
+      case 'transactions':
+        return (
+          <TransactionPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+            }}
+          />
+        );
+
       case 'invoice-history':
         return (
           <InvoiceHistoryPage
@@ -249,6 +343,7 @@ const MainApp: React.FC = () => {
       case 'user-management':
         return (
           <UserManagementPage
+            currentUser={currentUser}
             onBackToDashboard={() => {
               setActiveSidebarTab('dashboard');
               setActiveTopTab('dashboard');
@@ -315,6 +410,12 @@ const MainApp: React.FC = () => {
           setActiveTopTab('inventory');
         }}
         onOpenRateModal={() => setActiveSidebarTab('silver-rate')}
+        currentUser={currentUser}
+        onLogout={onLogout}
+        onOpenSettings={() => {
+          setActiveSidebarTab('settings');
+          setActiveTopTab('settings');
+        }}
       />
 
       {/* 2. Main Body with Left Sidebar + Content Area */}
@@ -341,10 +442,64 @@ const MainApp: React.FC = () => {
   );
 };
 
+const AppRouter: React.FC = () => {
+  const { user, isLoading, isAuthenticated, logout } = useAuth();
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot-password'>('login');
+
+  useEffect(() => {
+    if (isLoading) {
+      document.title = 'Rudra Silver';
+    } else if (!isAuthenticated) {
+      const name = authView === 'register' ? 'Register' : authView === 'forgot-password' ? 'Forgot Password' : 'Login';
+      document.title = `${name} | Rudra Silver`;
+    }
+  }, [isLoading, isAuthenticated, authView]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#080a0d] flex flex-col items-center justify-center gap-4 text-center select-none">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-full border-2 border-amber-500/20 border-t-amber-400 animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center text-amber-400 font-bold text-xs">
+            RS
+          </div>
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-sm font-bold text-slate-200 tracking-widest uppercase">
+            RUDRA SILVER
+          </h2>
+          <p className="text-[11px] text-amber-500/70 font-mono">
+            Verifying Authentication Session...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    if (authView === 'register') {
+      return <RegisterPage onGoLogin={() => setAuthView('login')} />;
+    }
+    if (authView === 'forgot-password') {
+      return <ForgotPasswordPage onGoLogin={() => setAuthView('login')} />;
+    }
+    return (
+      <LoginPage
+        onGoRegister={() => setAuthView('register')}
+        onGoForgotPassword={() => setAuthView('forgot-password')}
+      />
+    );
+  }
+
+  return <MainApp currentUser={user} onLogout={logout} />;
+};
+
 export const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <MainApp />
+      <AuthProvider>
+        <AppRouter />
+      </AuthProvider>
     </ThemeProvider>
   );
 };

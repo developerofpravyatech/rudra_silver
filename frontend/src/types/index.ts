@@ -71,3 +71,30 @@ export interface BillingItem {
   totalItemAmount: number;
   huidNumber?: string;
 }
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  mobile: string;
+  email?: string;
+  role: 'ADMIN' | 'STAFF';
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface UserListItem {
+  id: number;
+  name: string;
+  mobile: string;
+  email?: string;
+  role: 'ADMIN' | 'STAFF';
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface PaginatedUsers {
+  items: UserListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}

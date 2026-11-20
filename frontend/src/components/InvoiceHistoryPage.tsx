@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, Search, Printer, ArrowLeft, CheckCircle2, Eye } from 'lucide-react';
+import { fetchInvoiceDetail } from '../services/api';
 
 interface InvoiceHistoryPageProps {
   onBackToDashboard: () => void;
@@ -22,6 +23,8 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Paid' | 'Pending'>('ALL');
   const [printSuccess, setPrintSuccess] = useState<string | null>(null);
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
+  const [loadingInvoice, setLoadingInvoice] = useState(false);
 
   const invoices: InvoiceRecord[] = [
     { id: 'INV-1001', customer: 'Neha Patel', mobile: '9876543210', dateTime: '14 Nov 2026, 02:45 PM', itemsCount: 2, grossAmount: 8249.51, gstAmount: 247.49, netAmount: 8497, paymentMode: 'UPI', status: 'Paid' },
@@ -40,9 +43,30 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
     return matchesSearch && matchesStatus;
   });
 
-  const handlePrint = (invoiceId: string) => {
-    setPrintSuccess(`Reprinting Tax Invoice #${invoiceId}...`);
-    setTimeout(() => setPrintSuccess(null), 2500);
+  const handlePrint = async (invoiceId: string) => {
+    try {
+      const inv = await fetchInvoiceDetail(Number(invoiceId));
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write(`<pre>${JSON.stringify(inv, null, 2)}</pre>`);
+        w.document.close();
+        w.print();
+      }
+    } catch (e) {
+      alert('Failed to load invoice for printing.');
+    }
+  };
+
+  const handleView = async (invoiceId: string) => {
+    setLoadingInvoice(true);
+    try {
+      const inv = await fetchInvoiceDetail(Number(invoiceId));
+      setViewingInvoice(inv);
+    } catch (e) {
+      alert('Failed to load invoice details.');
+    } finally {
+      setLoadingInvoice(false);
+    }
   };
 
   return (
@@ -167,7 +191,7 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
                         <Printer className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => alert(`Viewing details for Invoice #${inv.id}`)}
+                        onClick={() => handleView(inv.id)}
                         className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] hover:border-amber-400 text-slate-600 hover:text-amber-700 dark:text-slate-400 dark:hover:text-amber-300 transition"
                         title="View Details"
                       >
@@ -181,6 +205,17 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
           </table>
         </div>
       </div>
+      {viewingInvoice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setViewingInvoice(null)}>
+          <div className="bg-white dark:bg-[#141822] rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-sm">Invoice #{viewingInvoice.voucher_no || viewingInvoice.id}</h3>
+              <button onClick={() => setViewingInvoice(null)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">✕</button>
+            </div>
+            <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(viewingInvoice, null, 2)}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

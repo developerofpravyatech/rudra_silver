@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Home,
   FilePlus2,
@@ -13,6 +14,9 @@ import {
   Printer,
   ShieldCheck,
   Settings,
+  BookOpen,
+  Package,
+  List,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,6 +33,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
 }) => {
+  const navigate = useNavigate();
+  const tabToPath: Record<string, string> = {
+    dashboard: '/',
+    'user-management': '/users',
+    'new-billing': '/billing/new',
+    'silver-weighing': '/silver-weighing',
+    'item-master': '/item-master',
+    'silver-rate': '/silver-rate',
+    inventory: '/inventory',
+    'stock-status': '/stock-status',
+    'daily-balance': '/daily-balance',
+    'transactions': '/transactions',
+    'party-ledgers': '/party-ledgers',
+    'invoice-history': '/invoice-history',
+    reports: '/reports',
+    'scale-connection': '/scale-connection',
+    settings: '/settings',
+  };
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
     {
@@ -45,6 +67,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'item-master', label: 'Item Master', icon: Sparkles },
     { id: 'silver-rate', label: 'Silver Rate', icon: TrendingUp },
     { id: 'inventory', label: 'Inventory', icon: Box },
+    { id: 'stock-status', label: 'Stock Status', icon: Package },
+    { id: 'daily-balance', label: 'Daily Balance', icon: Scale },
+    { id: 'transactions', label: 'Transaction', icon: List },
+    { id: 'party-ledgers', label: 'Ledgers', icon: BookOpen },
     { id: 'invoice-history', label: 'Invoice History', icon: Clock },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     {
@@ -52,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Scale Connection',
       icon: Wifi,
     },
+    { id: 'user-management', label: 'Users', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
@@ -65,7 +92,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                const path = tabToPath[item.id];
+                if (path) navigate(path);
+              }}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 group relative ${isActive
                 ? 'bg-amber-50 text-amber-900 font-semibold border border-amber-300 shadow-sm dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/[0.04]'

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   TrendingUp,
@@ -9,8 +10,10 @@ import {
   Zap,
   Box,
   BarChart3,
+  Loader2,
 } from 'lucide-react';
 import { DailyRates } from '../types';
+import { fetchSalesOverview, fetchDashboardSummary, fetchRecentInvoices } from '../services/api';
 
 interface MainDashboardProps {
   rates: DailyRates | null;
@@ -29,7 +32,68 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onOpenRateModal,
   onSelectCategory,
 }) => {
+  const navigate = useNavigate();
   const [salesTimeframe, setSalesTimeframe] = useState<'Today' | '7 Days' | '30 Days'>('Today');
+  const [salesData, setSalesData] = useState<{ label: string; total: number }[]>([]);
+  const [salesTotals, setSalesTotals] = useState({ total: 0, paid: 0, pending: 0, count: 0 });
+  const [salesLoading, setSalesLoading] = useState(false);
+  const [salesError, setSalesError] = useState<string | null>(null);
+  const [kpi, setKpi] = useState<any>(null);
+  const [kpiLoading, setKpiLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setKpiLoading(true);
+    fetchDashboardSummary()
+      .then((res) => { if (!cancelled) setKpi(res); })
+      .catch(() => { if (!cancelled) setKpi(null); })
+      .finally(() => { if (!cancelled) setKpiLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecentInvoices(5)
+      .then((rows) => {
+        if (cancelled) return;
+        const mapped = rows.map((r: any) => ({
+          id: r.voucher_no || r.id,
+          customer: r.account_name || 'Walk-in',
+          dateTime: r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : r.voucher_date,
+          amount: Number(r.net_amount || 0).toLocaleString('en-IN'),
+          status: Number(r.settled_cash_inr || 0) >= Number(r.net_amount || 0) ? 'Paid' : 'Pending',
+        }));
+        setRecentInvoices(mapped);
+      })
+      .catch(() => { if (!cancelled) setRecentInvoices([]); });
+    return () => { cancelled = true; };
+  }, []);
+  const rangeMap: Record<string, 'today' | '7days' | '30days'> = {
+    'Today': 'today',
+    '7 Days': '7days',
+    '30 Days': '30days',
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setSalesLoading(true);
+    setSalesError(null);
+    fetchSalesOverview(rangeMap[salesTimeframe])
+      .then((res) => {
+        if (cancelled) return;
+        setSalesData(res.points.map((p) => ({ label: p.label, total: p.total })));
+        setSalesTotals(res.totals);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSalesError(e.message || 'Failed to load sales');
+        setSalesData([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSalesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [salesTimeframe]);
 
   // Categories matching the image
   const categories = [
@@ -66,36 +130,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   ];
 
   // Recent invoices matching the image
-  const recentInvoices = [
-    {
-      id: 'INV-1001',
-      customer: 'Neha Patel',
-      dateTime: '14 Nov 2026, 02:45 PM',
-      amount: '8,497',
-      status: 'Paid',
-    },
-    {
-      id: 'INV-1000',
-      customer: 'Rahul Sharma',
-      dateTime: '14 Nov 2026, 01:30 PM',
-      amount: '12,450',
-      status: 'Paid',
-    },
-    {
-      id: 'INV-0999',
-      customer: 'Priya Shah',
-      dateTime: '14 Nov 2026, 12:15 PM',
-      amount: '6,230',
-      status: 'Paid',
-    },
-    {
-      id: 'INV-0998',
-      customer: 'Amit Desai',
-      dateTime: '14 Nov 2026, 11:50 AM',
-      amount: '9,120',
-      status: 'Pending',
-    },
-  ];
+  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
 
   const currentSilverRate = rates?.silver_925_rate
     ? Math.round(Number(rates.silver_925_rate) / 1000)
@@ -162,12 +197,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <span className="font-bold text-base">₹</span>
               </div>
               <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                &uarr; 12%
+                &uarr; {kpi?.today_sales_pct ?? 0}%
               </span>
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                ₹48,750
+                ₹{(kpi?.today_sales ?? 0).toLocaleString('en-IN')}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Today's Sales
@@ -185,12 +220,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <FileText className="w-4 h-4" />
               </div>
               <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                &uarr; 8%
+                &uarr; {kpi?.total_invoices_pct ?? 0}%
               </span>
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                28
+                {kpi?.total_invoices ?? 0}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Total Invoices
@@ -208,12 +243,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <Scale className="w-4 h-4" />
               </div>
               <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                &uarr; 15%
+                &uarr; {kpi?.silver_sold_pct ?? 0}%
               </span>
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                320.50 g
+                {(kpi?.silver_sold ?? 0).toFixed(2)} g
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Silver Sold
@@ -233,7 +268,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                ₹{currentSilverRate}/g
+                ₹{kpi?.silver_rate ?? currentSilverRate}/g
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Silver Rate
@@ -256,11 +291,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 <button
                   key={tf}
                   onClick={() => setSalesTimeframe(tf)}
-                  className={`px-2.5 py-0.5 rounded-md transition font-medium ${
-                    salesTimeframe === tf
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
+                  className={`px-2.5 py-0.5 rounded-md transition font-medium ${salesTimeframe === tf
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
                 >
                   {tf}
                 </button>
@@ -270,111 +304,75 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
           {/* SVG Golden Curved Line Chart */}
           <div className="h-32 w-full pt-3 relative">
-            <svg viewBox="0 0 400 130" className="w-full h-full overflow-visible">
-              <defs>
-                <linearGradient id="goldChartArea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#d4af37" stopOpacity="0.35" />
-                  <stop offset="70%" stopColor="#d4af37" stopOpacity="0.05" />
-                  <stop offset="100%" stopColor="#d4af37" stopOpacity="0" />
-                </linearGradient>
-                <linearGradient id="goldLine" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#f3e5ab" />
-                  <stop offset="50%" stopColor="#d4af37" />
-                  <stop offset="100%" stopColor="#e5c05d" />
-                </linearGradient>
-              </defs>
-
-              {/* Grid Lines */}
-              <line x1="30" y1="10" x2="390" y2="10" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
-              <line x1="30" y1="40" x2="390" y2="40" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
-              <line x1="30" y1="70" x2="390" y2="70" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
-              <line x1="30" y1="100" x2="390" y2="100" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
-
-              {/* Y Axis text */}
-              <text x="5" y="14" fill="#64748b" fontSize="9" fontFamily="monospace">40k</text>
-              <text x="5" y="44" fill="#64748b" fontSize="9" fontFamily="monospace">30k</text>
-              <text x="5" y="74" fill="#64748b" fontSize="9" fontFamily="monospace">20k</text>
-              <text x="5" y="104" fill="#64748b" fontSize="9" fontFamily="monospace">10k</text>
-              <text x="12" y="125" fill="#64748b" fontSize="9" fontFamily="monospace">0</text>
-
-              {/* Area fill */}
-              <path
-                d="M 40 98 Q 90 85 140 88 T 240 75 T 320 60 T 385 20 L 385 115 L 40 115 Z"
-                fill="url(#goldChartArea)"
-              />
-
-              {/* Smooth Spline Curve */}
-              <path
-                d="M 40 98 Q 90 85 140 88 T 240 75 T 320 60 T 385 20"
-                fill="none"
-                stroke="url(#goldLine)"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-
-              {/* Data points */}
-              {[
-                { cx: 40, cy: 98 },
-                { cx: 100, cy: 87 },
-                { cx: 160, cy: 88 },
-                { cx: 230, cy: 75 },
-                { cx: 300, cy: 62 },
-                { cx: 345, cy: 68 },
-                { cx: 385, cy: 20 },
-              ].map((pt, i) => (
-                <circle
-                  key={i}
-                  cx={pt.cx}
-                  cy={pt.cy}
-                  r="3.5"
-                  fill="#ffffff"
-                  stroke="#d4af37"
-                  strokeWidth="2"
-                  className="filter drop-shadow-[0_0_4px_rgba(212,175,55,0.8)]"
-                />
-              ))}
-
-              {/* X Axis text */}
-              <text x="35" y="126" fill="#94a3b8" fontSize="8.5">9AM</text>
-              <text x="95" y="126" fill="#94a3b8" fontSize="8.5">11AM</text>
-              <text x="160" y="126" fill="#94a3b8" fontSize="8.5">1PM</text>
-              <text x="230" y="126" fill="#94a3b8" fontSize="8.5">3PM</text>
-              <text x="300" y="126" fill="#94a3b8" fontSize="8.5">5PM</text>
-              <text x="370" y="126" fill="#94a3b8" fontSize="8.5">7PM</text>
-            </svg>
+            {salesLoading ? (
+              <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">
+                <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading...
+              </div>
+            ) : salesError ? (
+              <div className="h-full flex items-center justify-center text-rose-500 text-xs">{salesError}</div>
+            ) : salesData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">No sales data</div>
+            ) : (
+              (() => {
+                const max = Math.max(...salesData.map((d) => d.total), 1);
+                const pts = salesData.map((d, i) => {
+                  const x = salesData.length === 1 ? 210 : 40 + (i / (salesData.length - 1)) * 345;
+                  const y = 115 - (d.total / max) * 100;
+                  return { x, y, label: d.label, total: d.total };
+                });
+                const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                const areaPath = `${linePath} L ${pts[pts.length - 1].x} 115 L ${pts[0].x} 115 Z`;
+                return (
+                  <svg viewBox="0 0 400 130" className="w-full h-full overflow-visible">
+                    <defs>
+                      <linearGradient id="goldChartArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#d4af37" stopOpacity="0.35" />
+                        <stop offset="70%" stopColor="#d4af37" stopOpacity="0.05" />
+                        <stop offset="100%" stopColor="#d4af37" stopOpacity="0" />
+                      </linearGradient>
+                      <linearGradient id="goldLine" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#f3e5ab" />
+                        <stop offset="50%" stopColor="#d4af37" />
+                        <stop offset="100%" stopColor="#e5c05d" />
+                      </linearGradient>
+                    </defs>
+                    <line x1="30" y1="10" x2="390" y2="10" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
+                    <line x1="30" y1="40" x2="390" y2="40" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
+                    <line x1="30" y1="70" x2="390" y2="70" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
+                    <line x1="30" y1="100" x2="390" y2="100" stroke="currentColor" className="text-slate-200 dark:text-white/[0.05]" strokeDasharray="3 3" />
+                    <path d={areaPath} fill="url(#goldChartArea)" />
+                    <path d={linePath} fill="none" stroke="url(#goldLine)" strokeWidth="2.5" strokeLinecap="round" />
+                    {pts.map((p, i) => (
+                      <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#ffffff" stroke="#d4af37" strokeWidth="2" className="filter drop-shadow-[0_0_4px_rgba(212,175,55,0.8)]" />
+                    ))}
+                    {pts.map((p, i) => (
+                      <text key={`t${i}`} x={p.x} y="126" fill="#94a3b8" fontSize="8" textAnchor="middle">{p.label}</text>
+                    ))}
+                  </svg>
+                );
+              })()
+            )}
           </div>
+
         </div>
       </div>
 
-      {/* Row 2: Jewellery Categories + Inventory Summary */}
+      {/* Row 2: Jewellery Categories + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-w-0">
-        {/* Jewellery Categories Card */}
         <div className="lg:col-span-8 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08]">
           <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 mb-4">
             <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             <h3 className="font-semibold text-sm">Jewellery Categories</h3>
           </div>
-
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
             {categories.map((cat) => {
               return (
-                <div
-                  key={cat.id}
-                  onClick={() => onSelectCategory(cat.name)}
-                  className="bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 rounded-xl p-3 flex flex-col items-center justify-between cursor-pointer group transition-all duration-300 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:-translate-y-0.5"
-                >
+                <div key={cat.id} onClick={() => onSelectCategory(cat.name)} className="bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 rounded-xl p-3 flex flex-col items-center justify-between cursor-pointer group transition-all duration-300 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:-translate-y-0.5">
                   <div className="w-16 h-16 rounded-full overflow-hidden bg-white dark:bg-[#0a0d14] border border-slate-200 dark:border-white/[0.08] flex items-center justify-center p-2 group-hover:scale-110 transition-transform">
-                    <img
-                      src={cat.image}
-                      alt={cat.name}
-                      className="w-full h-full object-contain"
-                      loading="lazy"
-                    />
+                    <img src={cat.image} alt={cat.name} className="w-full h-full object-contain" loading="lazy" />
                   </div>
                   <div className="mt-2.5 flex items-center justify-between w-full px-1">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition">
-                      {cat.name}
-                    </span>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition">{cat.name}</span>
                     <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition" />
                   </div>
                 </div>
@@ -382,101 +380,29 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             })}
           </div>
         </div>
-
-        {/* Inventory Summary Card */}
         <div className="lg:col-span-4 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
-              <Box className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <h3 className="font-semibold text-sm">Inventory Summary</h3>
-            </div>
-            <button
-              onClick={onOpenLedger}
-              className="text-[11px] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition flex items-center gap-1"
-            >
-              <span>View All</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+          <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 mb-3">
+            <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <h3 className="font-semibold text-sm">Quick Actions</h3>
           </div>
-
-          <div className="flex items-center justify-between py-2">
-            {/* Circular Progress Ring */}
-            <div className="relative w-28 h-28 flex items-center justify-center">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  stroke="currentColor"
-                  className="text-slate-200 dark:text-[#1c222e]"
-                  strokeWidth="8"
-                  fill="transparent"
-                />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="40"
-                  stroke="url(#inventoryGradient)"
-                  strokeWidth="8"
-                  strokeDasharray="251.2"
-                  strokeDashoffset="55.2"
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-                <defs>
-                  <linearGradient id="inventoryGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#f3e5ab" />
-                    <stop offset="100%" stopColor="#d4af37" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-xl font-bold font-mono text-slate-900 dark:text-white">78%</span>
-                <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold tracking-tight">Stock Healthy</span>
-              </div>
-            </div>
-
-            {/* Inventory Legend */}
-            <div className="space-y-2.5 text-xs pr-4">
-              <div className="flex items-center space-x-2.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-slate-500 dark:text-slate-400">Total Stock:</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">12.5 kg</span>
-              </div>
-              <div className="flex items-center space-x-2.5">
-                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="text-slate-500 dark:text-slate-400">Available:</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">9.8 kg</span>
-              </div>
-              <div className="flex items-center space-x-2.5">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-slate-500 dark:text-slate-400">Low Stock:</span>
-                <span className="font-mono font-bold text-amber-600 dark:text-amber-400">2.7 kg</span>
-              </div>
-            </div>
+          <div className="grid grid-cols-2 gap-2.5 flex-1">
+            <button onClick={onOpenWeighingModal} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><Scale className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">Weigh Item</span></button>
+            <button onClick={onOpenNewBilling} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><FileText className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">New Invoice</span></button>
+            <button onClick={() => onSelectCategory('Payal')} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><Box className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">Add Item</span></button>
+            <button onClick={onOpenLedger} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">View Reports</span></button>
           </div>
         </div>
       </div>
-
-      {/* Row 3: Recent Invoices + Quick Actions + Luxury Brand Showcase */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch min-w-0">
-        {/* Recent Invoices Table */}
-        <div className="lg:col-span-5 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
+      {/* Row 3: Recent Invoices (Full Width) */}
+      <div className="grid grid-cols-1 min-w-0">
+        <div className="luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
               <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               <h3 className="font-semibold text-sm">Recent Invoices</h3>
             </div>
-            <button
-              onClick={onOpenNewBilling}
-              className="text-[11px] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition flex items-center gap-1"
-            >
-              <span>View All</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+            <button onClick={() => navigate('/invoice-history')} className="text-[11px] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition flex items-center gap-1"><span>View All</span><ArrowRight className="w-3 h-3" /></button>
           </div>
-
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -497,11 +423,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                     <td className="py-2.5 font-mono font-bold text-slate-900 dark:text-slate-200 text-right">₹ {inv.amount}</td>
                     <td className="py-2.5 text-right">
                       <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          inv.status === 'Paid'
-                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-400 dark:border-emerald-500/30'
-                            : 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-400 dark:border-amber-500/30'
-                        }`}
+                        className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === 'Paid'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-400 dark:border-emerald-500/30'
+                          : 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-400 dark:border-amber-500/30'
+                          }`}
                       >
                         {inv.status}
                       </span>
@@ -510,76 +435,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        {/* Quick Actions Card */}
-        <div className="lg:col-span-3 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
-          <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 mb-3">
-            <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <h3 className="font-semibold text-sm">Quick Actions</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 flex-1">
-            <button
-              onClick={onOpenWeighingModal}
-              className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"
-            >
-              <Scale className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-semibold">Weigh Item</span>
-            </button>
-
-            <button
-              onClick={onOpenNewBilling}
-              className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"
-            >
-              <FileText className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-semibold">New Invoice</span>
-            </button>
-
-            <button
-              onClick={() => onSelectCategory('Payal')}
-              className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"
-            >
-              <Box className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-semibold">Add Item</span>
-            </button>
-
-            <button
-              onClick={onOpenLedger}
-              className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"
-            >
-              <BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
-              <span className="text-xs font-semibold">View Reports</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Brand Luxury Showcase Card */}
-        <div className="lg:col-span-4 luxury-card-gold rounded-2xl p-5 relative overflow-hidden flex flex-col justify-between min-h-[190px]">
-          <div className="relative z-10 space-y-1">
-            <div className="font-script text-3xl gold-gradient-text tracking-wide font-normal">
-              Rudra Silver
-            </div>
-            <p className="font-serif text-slate-600 dark:text-slate-300 text-xs italic">
-              Where Purity Meets Luxury
-            </p>
-          </div>
-
-          {/* Luxury Ring Graphic Showcase */}
-          <div className="absolute right-0 -bottom-3 w-48 h-48 pointer-events-none flex items-center justify-center">
-            <img
-              src="/assets/luxury-ring.jpg"
-              alt="Diamond Silver Ring"
-              className="w-40 h-40 object-contain rounded-full shadow-[0_0_35px_rgba(212,175,55,0.25)]"
-              loading="lazy"
-            />
-          </div>
-
-          <div className="relative z-10 pt-4">
-            <span className="text-[10px] text-amber-800 dark:text-amber-300/90 font-mono tracking-wider uppercase border border-amber-400/50 dark:border-amber-500/30 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/10">
-              92.5 Hallmark Sterling
-            </span>
           </div>
         </div>
       </div>
