@@ -98,3 +98,58 @@ export interface PaginatedUsers {
   page: number;
   per_page: number;
 }
+
+export interface ItemRecord {
+  id: number;
+  group_name: string;
+  sgst: number;
+  cgst: number;
+  igst: number;
+  hsn_code: string;
+  job_sac: string;
+  gstr1_display: string;
+  l_tax: number;
+  c_tax: number;
+  com_co: string;
+  gp_percentage: number;
+  op_value: number;
+  cl_value: number;
+  minimum_stock: number;
+
+  // MRP Detail
+  mrp_type: string;
+  value_rate: number;
+  stock_method: string;
+  tunch: number;
+  default_item: string;
+
+  // Return / Exchange Policy
+  return_policy_enabled: boolean;
+  return_valid_days: number;
+  return_deduction_percent: number;
+  exchange_policy_enabled: boolean;
+  exchange_valid_days: number;
+  exchange_deduction_percent: number;
+  return_exchange_notes?: string | null;
+
+  // Tag Gen Restriction / Card Point
+  tag_gen_restricted: boolean;
+  tag_prefix: string;
+  min_tag_weight: number;
+  max_tag_weight: number;
+  card_point_enabled: boolean;
+  card_point_percentage: number;
+  card_points_per_gram: number;
+
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PaginatedItems {
+  items: ItemRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}

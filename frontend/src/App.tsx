@@ -16,6 +16,7 @@ import { TransactionPage } from './components/TransactionPage';
 import { SilverWeighingModal } from './components/SilverWeighingModal';
 import { SilverRateModal } from './components/SilverRateModal';
 import { CategoryItemsModal } from './components/CategoryItemsModal';
+import { ItemModuleContainer } from './components/ItemModuleContainer';
 import { InventoryPage } from './components/InventoryPage';
 import { InvoiceHistoryPage } from './components/InvoiceHistoryPage';
 import { ReportsPage } from './components/ReportsPage';
@@ -97,7 +98,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     dashboard: 'Dashboard',
     'new-billing': 'Billing',
     'silver-weighing': 'Silver Weighing',
-    'item-master': 'Item Master',
+    'item-master': 'Item List',
     'silver-rate': 'Silver Rate',
     customers: 'Customers',
     inventory: 'Inventory',
@@ -187,23 +188,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
         );
 
       case 'item-master':
-        return (
-          <CategoryItemsModal
-            categoryName={selectedCategory || 'Payal'}
-            onSelectProduct={(productName, defaultPurity, approxGrossWt) => {
-              handleOpenBilling('SALE', {
-                description: productName,
-                purityTouch: defaultPurity,
-                grossWeight: approxGrossWt,
-              });
-            }}
-            onClose={() => {
-              setActiveSidebarTab('dashboard');
-              setActiveTopTab('dashboard');
-            }}
-            isInline={true}
-          />
-        );
+        return <ItemModuleContainer />;
 
       case 'silver-rate':
         return (

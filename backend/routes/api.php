@@ -9,6 +9,7 @@ use Controllers\TagController;
 use Controllers\CalculationController;
 use Controllers\TransactionController;
 use Controllers\VoucherController;
+use Controllers\ItemController;
 
 function registerRoutes(Router $router): void {
     // -------------------------------------------------------------
@@ -44,6 +45,14 @@ function registerRoutes(Router $router): void {
     $router->get('/api/v1/accounts', [AccountController::class, 'getAccounts']);
     $router->get('/api/v1/tags/{identifier}', [TagController::class, 'lookupTag']);
     $router->post('/api/v1/calculate/item', [CalculationController::class, 'calculateItem']);
+
+    // Item Master & Item Groups (/api/v1/items)
+    $router->get('/api/v1/items', [ItemController::class, 'listItems']);
+    $router->get('/api/v1/items/{id}', [ItemController::class, 'getItem']);
+    $router->post('/api/v1/items', [ItemController::class, 'createItem']);
+    $router->put('/api/v1/items/{id}', [ItemController::class, 'updateItem']);
+    $router->delete('/api/v1/items/{id}', [ItemController::class, 'deleteItem']);
+
     $router->get('/api/v1/invoices', [VoucherController::class, 'listVouchers']);
     $router->get('/api/v1/invoices/{id}', [VoucherController::class, 'getVoucher']);
     $router->post('/api/v1/vouchers', [VoucherController::class, 'createVoucher']);

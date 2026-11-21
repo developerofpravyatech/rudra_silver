@@ -1,4 +1,4 @@
-import { Account, InventoryTag, DailyRates, DailySummary, AuthUser, PaginatedUsers } from '../types';
+import { Account, InventoryTag, DailyRates, DailySummary, AuthUser, PaginatedUsers, ItemRecord, PaginatedItems } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -340,6 +340,81 @@ export async function toggleUserStatusApi(id: number, is_active: boolean): Promi
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || 'Failed to change user status.');
+  }
+  return res.json();
+}
+
+// ─── Item Master API ──────────────────────────────────────────────────────────
+
+export async function fetchItemsApi(params: {
+  search?: string;
+  group_name?: string;
+  hsn_code?: string;
+  page?: number;
+  limit?: number;
+}): Promise<PaginatedItems> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.group_name) qs.set('group_name', params.group_name);
+  if (params.hsn_code) qs.set('hsn_code', params.hsn_code);
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+
+  const res = await fetch(`${API_BASE}/items?${qs.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || 'Failed to fetch items.');
+  }
+  return res.json();
+}
+
+export async function fetchItemByIdApi(id: number): Promise<ItemRecord> {
+  const res = await fetch(`${API_BASE}/items/${id}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || `Failed to fetch item #${id}.`);
+  }
+  return res.json();
+}
+
+export async function createItemApi(data: Partial<ItemRecord>): Promise<ItemRecord> {
+  const res = await fetch(`${API_BASE}/items`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || 'Failed to create item.');
+  }
+  return res.json();
+}
+
+export async function updateItemApi(id: number, data: Partial<ItemRecord>): Promise<ItemRecord> {
+  const res = await fetch(`${API_BASE}/items/${id}`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || 'Failed to update item.');
+  }
+  return res.json();
+}
+
+export async function deleteItemApi(id: number): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/items/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || err.message || 'Failed to delete item.');
   }
   return res.json();
 }
