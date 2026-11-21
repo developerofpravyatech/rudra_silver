@@ -12,6 +12,12 @@ class DashboardController {
         Response::json($rates);
     }
 
+    public static function getDailySummary(): void {
+        $dateStr = $_GET['date'] ?? null;
+        $summary = Voucher::getDailySummary($dateStr);
+        Response::json($summary);
+    }
+
     public static function getDashboardSummary(): void {
         $db = \Config\Database::getConnection();
         try {

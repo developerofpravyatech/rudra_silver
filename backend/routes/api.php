@@ -8,6 +8,7 @@ use Controllers\AccountController;
 use Controllers\TagController;
 use Controllers\CalculationController;
 use Controllers\TransactionController;
+use Controllers\VoucherController;
 
 function registerRoutes(Router $router): void {
     // -------------------------------------------------------------
@@ -28,20 +29,25 @@ function registerRoutes(Router $router): void {
     $router->post('/api/v1/auth/users', [UserController::class, 'createUser']);
     $router->put('/api/v1/auth/users/{id}', [UserController::class, 'updateUser']);
     $router->patch('/api/v1/auth/users/{id}/status', [UserController::class, 'toggleStatus']);
-$router->delete('/api/v1/auth/users/{id}', [UserController::class, 'deleteUser']);
+    $router->delete('/api/v1/auth/users/{id}', [UserController::class, 'deleteUser']);
 
     // -------------------------------------------------------------
     // Business & ERP Routes (/api/v1)
     // -------------------------------------------------------------
-$router->get('/api/v1/daily-balance', [DashboardController::class, 'getDailyBalance']);
-$router->get('/api/v1/sales/overview', [DashboardController::class, 'getSalesOverview']);
-$router->get('/api/v1/stock-status', [DashboardController::class, 'getStockStatus']);
-$router->get('/api/v1/stock-status/summary', [DashboardController::class, 'getStockStatusSummary']);
+    $router->get('/api/v1/rates/today', [DashboardController::class, 'getTodayRates']);
+    $router->get('/api/v1/daily-summary', [DashboardController::class, 'getDailySummary']);
+    $router->get('/api/v1/dashboard/summary', [DashboardController::class, 'getDashboardSummary']);
+    $router->get('/api/v1/daily-balance', [DashboardController::class, 'getDailyBalance']);
+    $router->get('/api/v1/sales/overview', [DashboardController::class, 'getSalesOverview']);
+    $router->get('/api/v1/stock-status', [DashboardController::class, 'getStockStatus']);
+    $router->get('/api/v1/stock-status/summary', [DashboardController::class, 'getStockStatusSummary']);
     $router->get('/api/v1/accounts', [AccountController::class, 'getAccounts']);
     $router->get('/api/v1/tags/{identifier}', [TagController::class, 'lookupTag']);
     $router->post('/api/v1/calculate/item', [CalculationController::class, 'calculateItem']);
-    // $router->get('/api/v1/invoices', [VoucherController::class, 'listVouchers']);
-$router->get('/api/v1/transactions', [TransactionController::class, 'listTransactions']);
-$router->get('/api/v1/transactions/summary', [TransactionController::class, 'getTransactionSummary']);
-$router->get('/api/v1/transactions/{id}', [TransactionController::class, 'getTransaction']);
+    $router->get('/api/v1/invoices', [VoucherController::class, 'listVouchers']);
+    $router->get('/api/v1/invoices/{id}', [VoucherController::class, 'getVoucher']);
+    $router->post('/api/v1/vouchers', [VoucherController::class, 'createVoucher']);
+    $router->get('/api/v1/transactions', [TransactionController::class, 'listTransactions']);
+    $router->get('/api/v1/transactions/summary', [TransactionController::class, 'getTransactionSummary']);
+    $router->get('/api/v1/transactions/{id}', [TransactionController::class, 'getTransaction']);
 }

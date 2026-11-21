@@ -8,10 +8,21 @@ use Exception;
 
 class VoucherController {
     public static function listVouchers(): void {
-        $limit = max(1, (int)($_GET['limit'] ?? 5));
+        $limit = max(1, (int)($_GET['limit'] ?? 50));
         $db = \Config\Database::getConnection();
         try {
-            $stmt = $db->prepare('SELECT v.id, v.voucher_no, v.voucher_date, v.net_amount, a.name AS account_name, v.created_at FROM vouchers v LEFT JOIN accounts a ON a.id = v.account_id WHERE v.voucher_type = :type ORDER BY v.created_at DESC LIMIT :lim');
+            $stmt = $db->prepare('
+                SELECT v.id, v.voucher_no, v.voucher_date, v.gross_amount, v.taxable_amount,
+                       (COALESCE(v.cgst_amount,0) + COALESCE(v.sgst_amount,0) + COALESCE(v.igst_amount,0)) AS gst_amount,
+                       v.net_amount, a.name AS account_name, a.mobile AS account_mobile,
+                       (SELECT COUNT(*) FROM voucher_items vi WHERE vi.voucher_id = v.id) AS items_count,
+                       v.created_at 
+                FROM vouchers v 
+                LEFT JOIN accounts a ON a.id = v.account_id 
+                WHERE v.voucher_type = :type 
+                ORDER BY v.created_at DESC 
+                LIMIT :lim
+            ');
             $stmt->bindValue(':type', 'SALE');
             $stmt->bindValue(':lim', $limit, \PDO::PARAM_INT);
             $stmt->execute();

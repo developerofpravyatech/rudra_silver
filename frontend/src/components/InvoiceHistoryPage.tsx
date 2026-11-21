@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Clock, Search, Printer, ArrowLeft, CheckCircle2, Eye } from 'lucide-react';
-import { fetchInvoiceDetail } from '../services/api';
+import React, { useState, useEffect } from 'react';
+import { Clock, Search, Printer, ArrowLeft, CheckCircle2, Eye, Loader2 } from 'lucide-react';
+import { fetchInvoiceDetail, fetchRecentInvoices } from '../services/api';
 
 interface InvoiceHistoryPageProps {
   onBackToDashboard: () => void;
@@ -8,6 +8,7 @@ interface InvoiceHistoryPageProps {
 
 interface InvoiceRecord {
   id: string;
+  rawId?: number;
   customer: string;
   mobile: string;
   dateTime: string;
@@ -19,21 +20,47 @@ interface InvoiceRecord {
   status: 'Paid' | 'Pending';
 }
 
+const DEFAULT_INVOICES: InvoiceRecord[] = [
+  { id: 'INV-1001', rawId: 1, customer: 'Neha Patel', mobile: '9876543210', dateTime: '14 Nov 2026, 02:45 PM', itemsCount: 2, grossAmount: 8249.51, gstAmount: 247.49, netAmount: 8497, paymentMode: 'UPI', status: 'Paid' },
+  { id: 'INV-1000', rawId: 2, customer: 'Rahul Sharma', mobile: '9822334455', dateTime: '14 Nov 2026, 01:30 PM', itemsCount: 3, grossAmount: 12087.38, gstAmount: 362.62, netAmount: 12450, paymentMode: 'CASH', status: 'Paid' },
+  { id: 'INV-0999', rawId: 3, customer: 'Priya Shah', mobile: '9711223344', dateTime: '14 Nov 2026, 12:15 PM', itemsCount: 1, grossAmount: 6048.54, gstAmount: 181.46, netAmount: 6230, paymentMode: 'BANK_TRANSFER', status: 'Paid' },
+  { id: 'INV-0998', rawId: 4, customer: 'Amit Desai', mobile: '9655443322', dateTime: '14 Nov 2026, 11:50 AM', itemsCount: 2, grossAmount: 8854.37, gstAmount: 265.63, netAmount: 9120, paymentMode: 'CASH', status: 'Pending' },
+  { id: 'INV-0997', rawId: 5, customer: 'Deepak Verma', mobile: '9544332211', dateTime: '13 Nov 2026, 05:20 PM', itemsCount: 4, grossAmount: 24650.48, gstAmount: 739.52, netAmount: 25390, paymentMode: 'UPI', status: 'Paid' },
+  { id: 'INV-0996', rawId: 6, customer: 'Sunita Joshi', mobile: '9433221100', dateTime: '13 Nov 2026, 03:10 PM', itemsCount: 1, grossAmount: 4368.93, gstAmount: 131.07, netAmount: 4500, paymentMode: 'CASH', status: 'Paid' },
+];
+
 export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackToDashboard }) => {
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>(DEFAULT_INVOICES);
+  const [loadingList, setLoadingList] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'Paid' | 'Pending'>('ALL');
   const [printSuccess, setPrintSuccess] = useState<string | null>(null);
   const [viewingInvoice, setViewingInvoice] = useState<any>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
 
-  const invoices: InvoiceRecord[] = [
-    { id: 'INV-1001', customer: 'Neha Patel', mobile: '9876543210', dateTime: '14 Nov 2026, 02:45 PM', itemsCount: 2, grossAmount: 8249.51, gstAmount: 247.49, netAmount: 8497, paymentMode: 'UPI', status: 'Paid' },
-    { id: 'INV-1000', customer: 'Rahul Sharma', mobile: '9822334455', dateTime: '14 Nov 2026, 01:30 PM', itemsCount: 3, grossAmount: 12087.38, gstAmount: 362.62, netAmount: 12450, paymentMode: 'CASH', status: 'Paid' },
-    { id: 'INV-0999', customer: 'Priya Shah', mobile: '9711223344', dateTime: '14 Nov 2026, 12:15 PM', itemsCount: 1, grossAmount: 6048.54, gstAmount: 181.46, netAmount: 6230, paymentMode: 'BANK_TRANSFER', status: 'Paid' },
-    { id: 'INV-0998', customer: 'Amit Desai', mobile: '9655443322', dateTime: '14 Nov 2026, 11:50 AM', itemsCount: 2, grossAmount: 8854.37, gstAmount: 265.63, netAmount: 9120, paymentMode: 'CASH', status: 'Pending' },
-    { id: 'INV-0997', customer: 'Deepak Verma', mobile: '9544332211', dateTime: '13 Nov 2026, 05:20 PM', itemsCount: 4, grossAmount: 24650.48, gstAmount: 739.52, netAmount: 25390, paymentMode: 'UPI', status: 'Paid' },
-    { id: 'INV-0996', customer: 'Sunita Joshi', mobile: '9433221100', dateTime: '13 Nov 2026, 03:10 PM', itemsCount: 1, grossAmount: 4368.93, gstAmount: 131.07, netAmount: 4500, paymentMode: 'CASH', status: 'Paid' },
-  ];
+  useEffect(() => {
+    fetchRecentInvoices(50)
+      .then((items: any[]) => {
+        if (Array.isArray(items) && items.length > 0) {
+          const mapped: InvoiceRecord[] = items.map((it: any) => ({
+            id: String(it.voucher_no ? `INV-${it.voucher_no}` : `INV-${it.id}`),
+            rawId: Number(it.id),
+            customer: it.account_name || 'Walk-in Customer',
+            mobile: it.account_mobile || '-',
+            dateTime: it.voucher_date || it.created_at,
+            itemsCount: Number(it.items_count || 1),
+            grossAmount: Number(it.gross_amount || it.net_amount || 0),
+            gstAmount: Number(it.gst_amount || 0),
+            netAmount: Number(it.net_amount || 0),
+            paymentMode: 'CASH',
+            status: 'Paid',
+          }));
+          setInvoices(mapped);
+        }
+      })
+      .catch((e) => console.error('Failed to load recent invoices:', e))
+      .finally(() => setLoadingList(false));
+  }, []);
 
   const filteredInvoices = invoices.filter((inv) => {
     const matchesSearch = inv.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -43,25 +70,35 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
     return matchesSearch && matchesStatus;
   });
 
-  const handlePrint = async (invoiceId: string) => {
+  const getTargetId = (inv: InvoiceRecord): number => {
+    if (inv.rawId) return inv.rawId;
+    const num = inv.id.replace(/\D/g, '');
+    return num ? Number(num) : 1;
+  };
+
+  const handlePrint = async (inv: InvoiceRecord) => {
     try {
-      const inv = await fetchInvoiceDetail(Number(invoiceId));
+      const targetId = getTargetId(inv);
+      const invoiceData = await fetchInvoiceDetail(targetId);
       const w = window.open('', '_blank');
       if (w) {
-        w.document.write(`<pre>${JSON.stringify(inv, null, 2)}</pre>`);
+        w.document.write(`<pre style="font-family: monospace; padding: 20px;">${JSON.stringify(invoiceData, null, 2)}</pre>`);
         w.document.close();
         w.print();
       }
+      setPrintSuccess(`Invoice ${inv.id} sent to print dialog.`);
+      setTimeout(() => setPrintSuccess(null), 3500);
     } catch (e) {
       alert('Failed to load invoice for printing.');
     }
   };
 
-  const handleView = async (invoiceId: string) => {
+  const handleView = async (inv: InvoiceRecord) => {
     setLoadingInvoice(true);
     try {
-      const inv = await fetchInvoiceDetail(Number(invoiceId));
-      setViewingInvoice(inv);
+      const targetId = getTargetId(inv);
+      const invoiceData = await fetchInvoiceDetail(targetId);
+      setViewingInvoice(invoiceData);
     } catch (e) {
       alert('Failed to load invoice details.');
     } finally {
@@ -184,14 +221,14 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
                   <td className="p-3 text-center font-sans">
                     <div className="flex items-center justify-center space-x-1.5">
                       <button
-                        onClick={() => handlePrint(inv.id)}
+                        onClick={() => handlePrint(inv)}
                         className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] hover:border-amber-400 text-slate-600 hover:text-amber-700 dark:text-slate-400 dark:hover:text-amber-300 transition"
                         title="Reprint Invoice"
                       >
                         <Printer className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => handleView(inv.id)}
+                        onClick={() => handleView(inv)}
                         className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] hover:border-amber-400 text-slate-600 hover:text-amber-700 dark:text-slate-400 dark:hover:text-amber-300 transition"
                         title="View Details"
                       >
