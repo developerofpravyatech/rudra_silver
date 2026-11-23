@@ -11,12 +11,13 @@ import {
   Clock,
   BarChart3,
   Wifi,
-  Printer,
-  ShieldCheck,
   Settings,
   BookOpen,
   Package,
   List,
+  Layers,
+  Tags,
+  Contact,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,25 +35,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
 }) => {
   const navigate = useNavigate();
+
   const tabToPath: Record<string, string> = {
     dashboard: '/',
     'user-management': '/users',
     'new-billing': '/billing/new',
     'silver-weighing': '/silver-weighing',
     'item-master': '/item-master',
+    'category-list': '/categories',
+    customers: '/customers',
     'silver-rate': '/silver-rate',
+    'stock-list': '/stock-list',
+    'metal-stock': '/metal-stock',
     inventory: '/inventory',
     'stock-status': '/stock-status',
     'daily-balance': '/daily-balance',
-    'transactions': '/transactions',
+    transactions: '/transactions',
     'party-ledgers': '/party-ledgers',
     'invoice-history': '/invoice-history',
     reports: '/reports',
     'scale-connection': '/scale-connection',
     settings: '/settings',
   };
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'stock-list', label: 'Stock List', icon: Package },
+    { id: 'metal-stock', label: 'Metal Stock', icon: Layers },
+    { id: 'daily-balance', label: 'Daily Balance', icon: Scale },
+    { id: 'category-list', label: 'Categories', icon: Tags },
+    { id: 'customers', label: 'Customers', icon: Contact },
+    { id: 'item-master', label: 'Item Master', icon: Sparkles },
+
     {
       id: 'new-billing',
       label: 'New Billing',
@@ -64,11 +78,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Silver Weighing',
       icon: Scale,
     },
-    { id: 'item-master', label: 'Item Master', icon: Sparkles },
     { id: 'silver-rate', label: 'Silver Rate', icon: TrendingUp },
     { id: 'inventory', label: 'Inventory', icon: Box },
-    { id: 'stock-status', label: 'Stock Status', icon: Package },
-    { id: 'daily-balance', label: 'Daily Balance', icon: Scale },
     { id: 'transactions', label: 'Transaction', icon: List },
     { id: 'party-ledgers', label: 'Ledgers', icon: BookOpen },
     { id: 'invoice-history', label: 'Invoice History', icon: Clock },
@@ -88,7 +99,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="px-3 pt-6 pb-3 space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive =
+            activeTab === item.id ||
+            (item.id === 'stock-list' && (activeTab === 'stock-add' || activeTab === 'stock-edit')) ||
+            (item.id === 'metal-stock' && (activeTab === 'metal-stock-add' || activeTab === 'metal-stock-edit')) ||
+            (item.id === 'daily-balance' && (activeTab === 'daily-balance-add' || activeTab === 'daily-balance-edit')) ||
+            (item.id === 'item-master' && (activeTab === 'item-add' || activeTab === 'item-edit')) ||
+            (item.id === 'category-list' && (activeTab === 'category-list' || activeTab === 'category-add' || activeTab === 'category-edit')) ||
+            (item.id === 'customers' && (activeTab === 'customers' || activeTab === 'customer-add' || activeTab === 'customer-edit'));
           return (
             <button
               key={item.id}
@@ -98,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 if (path) navigate(path);
               }}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 group relative ${isActive
-                ? 'bg-amber-50 text-amber-900 font-semibold border border-amber-300 shadow-sm dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
+                ? 'bg-amber-50 text-amber-900 font-semibold border border-amber-300 shadow-xs dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/[0.04]'
                 }`}
             >
