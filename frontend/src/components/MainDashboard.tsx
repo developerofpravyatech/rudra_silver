@@ -68,6 +68,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       .catch(() => { if (!cancelled) setRecentInvoices([]); });
     return () => { cancelled = true; };
   }, []);
+
   const rangeMap: Record<string, 'today' | '7days' | '30days'> = {
     'Today': 'today',
     '7 Days': '7days',
@@ -93,6 +94,18 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         if (!cancelled) setSalesLoading(false);
       });
     return () => { cancelled = true; };
+  }, [salesTimeframe]);
+
+  // Auto-refresh KPI and sales data every 30 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      fetchDashboardSummary().then((res) => setKpi(res));
+      fetchSalesOverview(rangeMap[salesTimeframe]).then((res) => {
+        setSalesData(res.points.map((p) => ({ label: p.label, total: p.total })));
+        setSalesTotals(res.totals);
+      });
+    }, 30000);
+    return () => clearInterval(intervalId);
   }, [salesTimeframe]);
 
   // Categories matching the image

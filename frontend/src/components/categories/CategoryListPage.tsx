@@ -29,7 +29,7 @@ import { CategoryRecord, CategoryFilterParams } from '../../types';
 import {
   fetchCategoriesListApi,
   deleteCategoryApi,
-  fetchCategoryMetalTypesApi,
+  fetchMetalStockFilterOptions,
   fetchAllCategoriesForExportApi,
 } from '../../services/api';
 import { CategoryViewModal } from './CategoryViewModal';
@@ -51,7 +51,7 @@ export const CategoryListPage: React.FC<CategoryListPageProps> = ({
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [totalRecords, setTotalRecords] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(1);
-  const [metalTypes, setMetalTypes] = useState<string[]>(['GOLD', 'SILVER', 'PLATINUM', 'DIAMOND']);
+  const [metalItems, setMetalItems] = useState<string[]>([]);
 
   // Filter form states
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -83,11 +83,11 @@ export const CategoryListPage: React.FC<CategoryListPageProps> = ({
   // Load Metal Types
   useEffect(() => {
     let isMounted = true;
-    fetchCategoryMetalTypesApi()
-      .then((types) => {
-        if (isMounted) setMetalTypes(types);
+    fetchMetalStockFilterOptions()
+      .then((opts) => {
+        if (isMounted) setMetalItems(opts.items || []);
       })
-      .catch((err) => console.error('Failed to load metal types:', err));
+      .catch((err) => console.error('Failed to load metal stock items:', err));
 
     return () => {
       isMounted = false;
@@ -449,9 +449,9 @@ export const CategoryListPage: React.FC<CategoryListPageProps> = ({
                   className="w-full appearance-none pl-3 pr-8 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
                   <option value="all">All Metal Types</option>
-                  {metalTypes.map((mt) => (
-                    <option key={mt} value={mt}>
-                      {mt}
+                  {metalItems.map((it) => (
+                    <option key={it} value={it}>
+                      {it}
                     </option>
                   ))}
                 </select>

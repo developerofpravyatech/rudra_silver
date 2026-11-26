@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, FileText, Box, Settings, Sun, Moon, ChevronDown, Scale, LogOut, User as UserIcon, Shield } from 'lucide-react';
+import { Home, FileText, Box, Receipt, Settings, Sun, Moon, ChevronDown, Scale, LogOut, User as UserIcon, Shield } from 'lucide-react';
 import { DailyRates, AuthUser } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
@@ -74,6 +74,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
   const topNavTabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Home, action: () => { setActiveTopTab('dashboard'); navigate('/'); } },
+    { id: 'purchase-register', label: 'Purchase Register', icon: Receipt, action: () => { setActiveTopTab('purchase-register'); navigate('/purchase-register'); } },
     { id: 'billing', label: 'Billing', icon: FileText, action: () => { if (onOpenNewBilling) onOpenNewBilling(); navigate('/billing/new'); } },
     { id: 'inventory', label: 'Inventory', icon: Box, action: () => { if (onOpenCatalogue) onOpenCatalogue(); navigate('/inventory'); } },
   ];
@@ -104,16 +105,18 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
       {/* Center: Main Navigation Tabs */}
       <nav className="flex items-center bg-slate-100 dark:bg-[#131720] p-1 rounded-xl border border-slate-200 dark:border-white/[0.07] shadow-inner space-x-1">
-        {topNavTabs.map((tab) => {
+        {[
+          { id: 'dashboard', label: 'Dashboard', icon: Home, path: '/', action: () => setActiveTopTab('dashboard') },
+          { id: 'purchase-register', label: 'Purchase Register', icon: Receipt, path: '/purchase-register', action: () => setActiveTopTab('purchase-register') },
+          { id: 'daily-balance', label: 'Daily Balance', icon: Scale, path: '/daily-balance', action: () => setActiveTopTab('daily-balance') },
+          { id: 'stock', label: 'Stock', icon: Box, path: '/stock-list', action: () => setActiveTopTab('stock') },
+        ].map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTopTabResolved === tab.id;
+          const isActive = location.pathname === tab.path || (tab.id === 'stock' && location.pathname.startsWith('/stock'));
           return (
             <button
               key={tab.id}
-              onClick={() => {
-                setActiveTopTab(tab.id);
-                if (tab.action) tab.action();
-              }}
+              onClick={() => { tab.action(); navigate(tab.path); }}
               className={`flex items-center space-x-2 px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 relative ${isActive
                 ? 'bg-white text-amber-700 font-semibold border border-amber-300 shadow-sm dark:bg-amber-500/25 dark:text-amber-200 dark:border-amber-400/60 dark:shadow-[0_0_15px_rgba(212,175,55,0.25)]'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-white/[0.04]'
@@ -131,28 +134,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
 
       {/* Right: Scale, Theme Toggle & Profile */}
       <div className="flex items-center space-x-3.5">
-        {/* Scale Integration Quick Button */}
-        <button
-          onClick={onConnectScale}
-          className={`hidden md:flex items-center space-x-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${isScaleConnected
-            ? 'bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-500/40 dark:text-emerald-300 shadow-sm dark:shadow-[0_0_10px_rgba(16,185,129,0.2)]'
-            : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-amber-400 hover:text-amber-700 dark:bg-[#141822] dark:border-white/[0.08] dark:text-slate-300 dark:hover:border-amber-500/30 dark:hover:text-amber-300'
-            }`}
-          title="Connect RS-232 / USB Digital Weighing Scale"
-        >
-          <Scale className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
-          <span>{isScaleConnected ? `${liveWeight.toFixed(2)} g` : 'Connect Scale'}</span>
-        </button>
 
-        {/* Daily Entry Shortcut */}
-        <button
-          onClick={onOpenDailyEntry}
-          className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 border border-slate-200 text-slate-700 hover:text-amber-700 hover:border-amber-400 dark:bg-[#141822] dark:border-white/[0.08] dark:text-slate-300 dark:hover:text-amber-300 dark:hover:border-amber-500/30 text-xs transition"
-          title="Open Classical Jwelly Daily Entry Hub"
-        >
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse"></span>
-          <span>Daily Entry</span>
-        </button>
 
         {/* Theme Toggle Button (Replaces Notification Button) */}
         <button
@@ -186,8 +168,8 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({
               </span>
               <div className="flex items-center gap-1">
                 <span className={`text-[9px] font-semibold tracking-wider uppercase px-1 rounded ${displayRole === 'ADMIN'
-                    ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                   }`}>
                   {displayRole}
                 </span>

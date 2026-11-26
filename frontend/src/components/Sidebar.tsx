@@ -18,6 +18,10 @@ import {
   Layers,
   Tags,
   Contact,
+  Coins,
+  Receipt,
+  ShoppingBag,
+  UserPlus,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -42,6 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     'new-billing': '/billing/new',
     'silver-weighing': '/silver-weighing',
     'item-master': '/item-master',
+    karigar: '/karigar',
     'category-list': '/categories',
     customers: '/customers',
     'silver-rate': '/silver-rate',
@@ -51,6 +56,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     'stock-status': '/stock-status',
     'daily-balance': '/daily-balance',
     transactions: '/transactions',
+    'silver-bullion': '/silver-bullion',
+    'purchase-register': '/purchase-register',
+    'sale-register': '/sale-register',
+    'customer-profit-report': '/customer-profit-report',
+    'age-wise-list': '/age-wise-list',
     'party-ledgers': '/party-ledgers',
     'invoice-history': '/invoice-history',
     reports: '/reports',
@@ -60,35 +70,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'new-billing', label: 'New Billing', icon: FilePlus2, badge: 'New', },
+    { id: 'category-list', label: 'Categories', icon: Tags },
+    { id: 'customers', label: 'Customers', icon: Contact },
     { id: 'stock-list', label: 'Stock List', icon: Package },
     { id: 'metal-stock', label: 'Metal Stock', icon: Layers },
     { id: 'daily-balance', label: 'Daily Balance', icon: Scale },
-    { id: 'category-list', label: 'Categories', icon: Tags },
-    { id: 'customers', label: 'Customers', icon: Contact },
+    { id: 'transactions', label: 'Dailys Transaction', icon: List },
+    { id: 'silver-bullion', label: 'Silver Bullion', icon: Coins },
+    { id: 'purchase-register', label: 'Purchase Register', icon: Receipt },
+    { id: 'sale-register', label: 'Sale Register', icon: ShoppingBag },
+    { id: 'customer-profit-report', label: 'Customer Profit', icon: BarChart3 },
+    { id: 'age-wise-list', label: 'Age Wise List', icon: Clock },
     { id: 'item-master', label: 'Item Master', icon: Sparkles },
-
-    {
-      id: 'new-billing',
-      label: 'New Billing',
-      icon: FilePlus2,
-      badge: 'New',
-    },
-    {
-      id: 'silver-weighing',
-      label: 'Silver Weighing',
-      icon: Scale,
-    },
-    { id: 'silver-rate', label: 'Silver Rate', icon: TrendingUp },
+    { id: 'karigar', label: 'Karigar', icon: UserPlus },
     { id: 'inventory', label: 'Inventory', icon: Box },
-    { id: 'transactions', label: 'Transaction', icon: List },
     { id: 'party-ledgers', label: 'Ledgers', icon: BookOpen },
     { id: 'invoice-history', label: 'Invoice History', icon: Clock },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
-    {
-      id: 'scale-connection',
-      label: 'Scale Connection',
-      icon: Wifi,
-    },
     { id: 'user-management', label: 'Users', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -105,7 +103,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             (item.id === 'metal-stock' && (activeTab === 'metal-stock-add' || activeTab === 'metal-stock-edit')) ||
             (item.id === 'daily-balance' && (activeTab === 'daily-balance-add' || activeTab === 'daily-balance-edit')) ||
             (item.id === 'item-master' && (activeTab === 'item-add' || activeTab === 'item-edit')) ||
+            (item.id === 'silver-bullion' && (activeTab === 'silver-bullion' || activeTab === 'silver-bullion-add' || activeTab === 'silver-bullion-edit')) ||
+            (item.id === 'purchase-register' && (activeTab === 'purchase-register' || activeTab === 'purchase-register-add' || activeTab === 'purchase-register-edit')) ||
+            (item.id === 'sale-register' && (activeTab === 'sale-register' || activeTab === 'sale-register-add' || activeTab === 'sale-register-edit')) ||
             (item.id === 'category-list' && (activeTab === 'category-list' || activeTab === 'category-add' || activeTab === 'category-edit')) ||
+            (item.id === 'karigar' && (activeTab === 'karigar' || activeTab === 'karigar-add' || activeTab === 'karigar-edit')) ||
             (item.id === 'customers' && (activeTab === 'customers' || activeTab === 'customer-add' || activeTab === 'customer-edit'));
           return (
             <button

@@ -65,6 +65,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
   const [addForm, setAddForm] = useState({
     name: '',
     mobile: '',
+    email: '',
     password: '',
     role: 'STAFF' as 'ADMIN' | 'STAFF',
   });
@@ -76,6 +77,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
   const [editForm, setEditForm] = useState({
     name: '',
     mobile: '',
+    email: '',
     role: 'STAFF' as 'ADMIN' | 'STAFF',
     is_active: true,
   });
@@ -144,6 +146,10 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
       setAddError('Valid 10-digit mobile number is required.');
       return;
     }
+    if (!addForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addForm.email.trim())) {
+      setAddError('Valid email address is required.');
+      return;
+    }
     if (!addForm.password || addForm.password.length < 6) {
       setAddError('Password must be at least 6 characters.');
       return;
@@ -154,12 +160,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
       await createUserApi({
         name: addForm.name.trim(),
         mobile: cleanMobile,
+        email: addForm.email.trim(),
         password: addForm.password,
         role: addForm.role,
       });
 
       setShowAddModal(false);
-      setAddForm({ name: '', mobile: '', password: '', role: 'STAFF' });
+      setAddForm({ name: '', mobile: '', email: '', password: '', role: 'STAFF' });
       showNotification('New user created successfully.');
       loadUsers();
     } catch (err: any) {
@@ -175,6 +182,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
     setEditForm({
       name: u.name,
       mobile: u.mobile || '',
+      email: u.email || '',
       role: u.role,
       is_active: u.is_active,
     });
@@ -198,12 +206,17 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
       setEditError('Valid 10-digit mobile number is required.');
       return;
     }
+    if (!editForm.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editForm.email.trim())) {
+      setEditError('Valid email address is required.');
+      return;
+    }
 
     setEditLoading(true);
     try {
       await updateUserApi(selectedUser.id, {
         name: editForm.name.trim(),
         mobile: cleanMobile,
+        email: editForm.email.trim(),
         role: selectedUser.id === currentUser?.id ? undefined : editForm.role,
         is_active: selectedUser.id === currentUser?.id ? undefined : editForm.is_active,
       });
@@ -316,7 +329,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name or mobile..."
+              placeholder="Search by name, mobile or email..."
               className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/[0.1] bg-white dark:bg-[#141822] text-slate-900 dark:text-slate-100 placeholder-slate-400 text-xs focus:outline-none focus:border-amber-400"
             />
           </div>
@@ -396,6 +409,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                   <th className="p-3 w-12 text-center">#</th>
                   <th className="p-3">Name</th>
                   <th className="p-3">Mobile</th>
+                  <th className="p-3">Email</th>
                   <th className="p-3 text-center">Role</th>
                   <th className="p-3 text-center">Status</th>
                   <th className="p-3">Created Date</th>
@@ -405,7 +419,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-500">
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <Loader2 className="w-6 h-6 animate-spin text-amber-500" />
                         <span className="text-xs">Loading user directory from database...</span>
@@ -414,7 +428,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                   </tr>
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-500">
+                    <td colSpan={8} className="p-8 text-center text-slate-500">
                       <div className="flex flex-col items-center justify-center gap-1.5 py-4">
                         <UserIcon className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
@@ -466,6 +480,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                         {/* Mobile Number */}
                         <td className="p-3 font-mono text-slate-700 dark:text-slate-300 text-[11px]">
                           {formatMobile(u.mobile)}
+                        </td>
+
+                        {/* Email */}
+                        <td className="p-3 text-slate-700 dark:text-slate-300 text-[11px]">
+                          {u.email || '—'}
                         </td>
 
                         {/* Role */}
@@ -665,6 +684,20 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
 
               <div>
                 <label className="block font-medium mb-1 text-slate-700 dark:text-slate-300">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={addForm.email}
+                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                  placeholder="user@example.com"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141822] text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium mb-1 text-slate-700 dark:text-slate-300">
                   Password *
                 </label>
                 <div className="relative">
@@ -771,6 +804,20 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                   value={editForm.mobile}
                   onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
                   placeholder="98250 12345"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141822] text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-medium mb-1 text-slate-700 dark:text-slate-300">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  placeholder="user@example.com"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141822] text-slate-900 dark:text-slate-100 text-xs focus:outline-none focus:border-amber-400"
                 />
               </div>
@@ -886,6 +933,13 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({
                   <span className="text-[10px] text-slate-500 block uppercase">Mobile</span>
                   <span className="font-mono text-slate-800 dark:text-slate-200 mt-0.5 block">
                     {formatMobile(selectedUser.mobile)}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#141822] border border-slate-200 dark:border-white/[0.06]">
+                  <span className="text-[10px] text-slate-500 block uppercase">Email</span>
+                  <span className="text-slate-800 dark:text-slate-200 mt-0.5 block break-all">
+                    {selectedUser.email || '—'}
                   </span>
                 </div>
 

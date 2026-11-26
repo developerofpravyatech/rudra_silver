@@ -4,6 +4,7 @@ namespace Controllers;
 use Helpers\Response;
 use Helpers\Validator;
 use Models\Category;
+use Models\MetalStock;
 use Exception;
 
 class CategoryController {
@@ -73,11 +74,9 @@ class CategoryController {
         }
 
         if (!$isUpdate || array_key_exists('metal_type', $body)) {
-            $mt = strtoupper(trim((string)($body['metal_type'] ?? '')));
+            $mt = trim((string)($body['metal_type'] ?? ''));
             if ($mt === '') {
                 $errors['metal_type'] = 'Metal Type is required.';
-            } elseif (!in_array($mt, Category::METAL_TYPES, true)) {
-                $errors['metal_type'] = 'Invalid Metal Type. Allowed: ' . implode(', ', Category::METAL_TYPES);
             }
         }
 
@@ -205,7 +204,7 @@ class CategoryController {
      * GET /api/categories/metal-types
      */
     public static function metalTypes(): void {
-        Response::json(Category::METAL_TYPES);
+        Response::json(MetalStock::getDistinctItemNames());
     }
 
     /**

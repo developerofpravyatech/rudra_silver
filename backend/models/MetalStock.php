@@ -439,4 +439,15 @@ class MetalStock {
             'updated_at'    => $row['updated_at'] ?? '',
         ];
     }
+
+    /**
+     * Get distinct item names from metal_stock
+     */
+    public static function getDistinctItemNames(): array {
+        $db = \Config\Database::getConnection();
+        $stmt = $db->query("SELECT DISTINCT item_name FROM metal_stock WHERE item_name IS NOT NULL AND TRIM(item_name) <> '' ORDER BY item_name ASC");
+        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+        return $rows ?: [];
+    }
+
 }

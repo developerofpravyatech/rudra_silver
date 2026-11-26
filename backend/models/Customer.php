@@ -104,9 +104,9 @@ class Customer {
             }
         }
 
-        // 8. Potential validation: non-negative number
-        if (isset($data['Potential']) && (float)$data['Potential'] < 0) {
-            $errors['Potential'] = 'Potential must be a non-negative number.';
+        // 8. Potential validation: valid numeric if provided (allows negative, zero, decimal)
+        if (isset($data['Potential']) && $data['Potential'] !== '' && !is_numeric($data['Potential'])) {
+            $errors['Potential'] = 'Potential must be a valid number.';
         }
 
         // 9. Date of Birth cannot be in the future

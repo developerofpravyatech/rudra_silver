@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Phone, ArrowRight, UserPlus, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowRight, UserPlus, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { AuthBrandPanel } from './AuthBrandPanel';
@@ -13,33 +13,47 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onGoRegister, onGoForgotPa
   const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
-  const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Field-wise validation errors
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+
+  const validate = () => {
+    const errs: { email?: string; password?: string } = {};
+    const emailTrimmed = email.trim();
+
+    if (!emailTrimmed) {
+      errs.email = 'Email address is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed)) {
+      errs.email = 'Please enter a valid email address (e.g. name@domain.com).';
+    }
+
+    if (!password) {
+      errs.password = 'Password is required.';
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const cleanMobile = mobile.trim().replace(/\s+/g, '');
-    if (!cleanMobile || cleanMobile.length < 10) {
-      setError('Please enter a valid 10-digit mobile number.');
-      return;
-    }
-
-    if (!password) {
-      setError('Please enter your password.');
+    if (!validate()) {
       return;
     }
 
     setLoading(true);
     try {
-      await login(cleanMobile, password);
+      await login(email.trim(), password, rememberMe);
     } catch (err: any) {
-      setError(err.message || 'Invalid mobile number or password.');
+      setError(err.message || 'Invalid email or password. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -84,7 +98,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onGoRegister, onGoForgotPa
                 Welcome Back
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                Sign in to your account
+                Sign in to your Rudra Silver ERP account
               </p>
             </div>
 
@@ -96,45 +110,73 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onGoRegister, onGoForgotPa
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
-              {/* Mobile Number Input */}
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="on">
+              {/* Email Input */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Email Address
+                </label>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
-                    type="tel"
-                    value={mobile}
-                    onChange={(e) => setMobile(e.target.value)}
-                    required
-                    placeholder="Mobile Number"
-                    autoComplete="tel"
-                    maxLength={15}
-                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    placeholder="admin@rudrasilver.com"
+                    autoComplete="email"
+                    className={`w-full pl-11 pr-4 py-3 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${
+                      errors.email
+                        ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                        : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                    }`}
                   />
                 </div>
+                {errors.email && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.email}
+                  </p>
+                )}
               </div>
 
               {/* Password Input */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Password
+                </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
                     type={showPw ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="Password"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    placeholder="••••••••"
                     autoComplete="current-password"
-                    className="w-full pl-11 pr-11 py-3 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    className={`w-full pl-11 pr-11 py-3 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${
+                      errors.password
+                        ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                        : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                    }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw((p) => !p)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 transition cursor-pointer"
+                    title={showPw ? 'Hide password' : 'Show password'}
                   >
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.password}
+                  </p>
+                )}
               </div>
 
               {/* Remember Me & Forgot Password Row */}

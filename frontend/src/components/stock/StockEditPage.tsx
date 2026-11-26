@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { fetchStockStatusView, updateStockStatus, fetchStockStatusUnits } from '../../services/api';
 import { StockStatusRecord } from '../../types';
-import { showSuccessAlert, showErrorAlert, showValidationAlert } from '../../utils/alert';
+import { showSuccessAlert, showErrorAlert } from '../../utils/alert';
 
 interface StockEditPageProps {
   onBackToList?: () => void;
@@ -25,14 +25,12 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
 
   const id = recordId || (params.id ? parseInt(params.id, 10) : 0);
 
-  // Loading & error states
   const [loading, setLoading] = useState<boolean>(true);
   const [notFound, setNotFound] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Form states matching stock_status table
   const [itemName, setItemName] = useState<string>('');
   const [unit, setUnit] = useState<string>('Gm');
   const [pc, setPc] = useState<string>('');
@@ -55,7 +53,6 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
       .catch((err) => console.error('Failed to load units:', err));
   }, []);
 
-  // Fetch record on mount
   useEffect(() => {
     if (!id || id <= 0) {
       setNotFound(true);
@@ -110,66 +107,76 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
     });
   };
 
-  const validate = (): boolean => {
+  const validate = (): string | null => {
     const errs: Record<string, string> = {};
 
-    const trimmedItemName = itemName.trim();
-    if (!trimmedItemName) {
-      errs.item_name = 'Item Name is required.';
+    if (!itemName.trim()) {
+      errs.item_name = 'This field is required.';
     }
 
-    const trimmedUnit = unit.trim();
-    if (!trimmedUnit) {
-      errs.unit = 'Unit is required.';
-    } else if (
-      availableUnits.length > 0 &&
-      !availableUnits.some((u) => u.toLowerCase() === trimmedUnit.toLowerCase())
-    ) {
-      errs.unit = 'Please select a valid unit.';
+    if (!unit.trim()) {
+      errs.unit = 'This field is required.';
     }
 
-    const checkNumeric = (val: string, field: string) => {
-      const trimmed = val.trim();
-      if (trimmed === '') return;
-      if (isNaN(Number(trimmed)) || !isFinite(Number(trimmed))) {
-        errs[field] = 'Must be a valid number.';
-        return;
-      }
-      const num = Number(trimmed);
-      if (num < 0) {
-        errs[field] = 'Value must be non-negative.';
-        return;
-      }
-      const decimalPart = trimmed.split('.')[1];
-      if (decimalPart && decimalPart.length > 3) {
-        errs[field] = 'Maximum 3 decimal places allowed.';
-      }
-    };
+    if (!pc.trim()) {
+      errs.pc = 'This field is required.';
+    }
 
-    checkNumeric(pc, 'pc');
-    checkNumeric(grossWeight, 'gross_weight');
-    checkNumeric(netWeight, 'net_weight');
-    checkNumeric(tunch, 'tunch');
-    checkNumeric(wastage, 'wastage');
-    checkNumeric(labourWeight, 'labour_weight');
-    checkNumeric(rate, 'rate');
-    checkNumeric(silverFine, 'silver_fine');
-    checkNumeric(total, 'total');
-    checkNumeric(goldFine, 'gold_fine');
+    if (!grossWeight.trim()) {
+      errs.gross_weight = 'This field is required.';
+    }
+
+    if (!netWeight.trim()) {
+      errs.net_weight = 'This field is required.';
+    }
+
+    if (!tunch.trim()) {
+      errs.tunch = 'This field is required.';
+    }
+
+    if (!wastage.trim()) {
+      errs.wastage = 'This field is required.';
+    }
+
+    if (!labourWeight.trim()) {
+      errs.labour_weight = 'This field is required.';
+    }
+
+    if (!rate.trim()) {
+      errs.rate = 'This field is required.';
+    }
+
+    if (!silverFine.trim()) {
+      errs.silver_fine = 'This field is required.';
+    }
+
+    if (!total.trim()) {
+      errs.total = 'This field is required.';
+    }
+
+    if (!goldFine.trim()) {
+      errs.gold_fine = 'This field is required.';
+    }
 
     setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+    const firstInvalid = Object.keys(errs)[0] || null;
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = document.querySelector(`[name="${firstInvalid}"]`) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
+    return firstInvalid;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (!validate()) {
-      const msg = !itemName.trim()
-        ? 'Please fill in all required fields.'
-        : 'Please correct the highlighted fields.';
-      await showValidationAlert(msg, 'Validation Error');
+    if (validate()) {
       return;
     }
 
@@ -244,26 +251,13 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto w-full space-y-6">
-        {/* Header with Breadcrumb */}
         <div className="pb-4 border-b border-slate-200">
           <nav className="text-xs text-slate-500 flex items-center space-x-1.5 mb-1">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="hover:text-blue-600 transition"
-            >
-              Dashboard
-            </button>
+            <button type="button" onClick={handleCancel} className="hover:text-blue-600 transition">Dashboard</button>
             <span>/</span>
             <span className="text-slate-500">Stock Management</span>
             <span>/</span>
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="hover:text-blue-600 transition"
-            >
-              Stock List
-            </button>
+            <button type="button" onClick={handleCancel} className="hover:text-blue-600 transition">Stock List</button>
             <span>/</span>
             <span className="text-slate-900 font-semibold">Edit Stock</span>
           </nav>
@@ -287,7 +281,6 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
           </div>
         </div>
 
-        {/* Form Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           <form onSubmit={handleSubmit} className="p-6 space-y-6">
             {errorMsg && (
@@ -297,7 +290,6 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
               </div>
             )}
 
-            {/* Section 1: Item Identification */}
             <div className="space-y-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1 flex items-center space-x-2">
                 <Edit className="w-4 h-4 text-blue-600" />
@@ -311,19 +303,14 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
                   </label>
                   <input
                     type="text"
+                    name="item_name"
                     value={itemName}
-                    onChange={(e) => {
-                      setItemName(e.target.value);
-                      clearError('item_name');
-                    }}
+                    onChange={(e) => { setItemName(e.target.value); clearError('item_name'); }}
+                    onBlur={() => { if (!itemName.trim()) setFieldErrors((prev) => ({ ...prev, item_name: 'This field is required.' })); }}
                     placeholder="e.g. 7T FANCY PAYAL"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.item_name ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
+                    className={`w-full px-3 py-2 text-sm rounded-lg border font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.item_name ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                   />
-                  {fieldErrors.item_name && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.item_name}</p>
-                  )}
+                  {fieldErrors.item_name && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.item_name}</p>}
                 </div>
 
                 <div>
@@ -332,259 +319,83 @@ export const StockEditPage: React.FC<StockEditPageProps> = ({ onBackToList, reco
                   </label>
                   <input
                     type="text"
+                    name="unit"
                     list="units-list-edit"
                     value={unit}
-                    onChange={(e) => {
-                      setUnit(e.target.value);
-                      clearError('unit');
-                    }}
+                    onChange={(e) => { setUnit(e.target.value); clearError('unit'); }}
+                    onBlur={() => { if (!unit.trim()) setFieldErrors((prev) => ({ ...prev, unit: 'This field is required.' })); }}
                     placeholder="e.g. Gm, Pcs"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border bg-white font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.unit ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
+                    className={`w-full px-3 py-2 text-sm rounded-lg border bg-white font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.unit ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                   />
                   <datalist id="units-list-edit">
                     {availableUnits.map((u) => (
                       <option key={u} value={u} />
                     ))}
                   </datalist>
-                  {fieldErrors.unit && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.unit}</p>
-                  )}
+                  {fieldErrors.unit && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.unit}</p>}
                 </div>
               </div>
             </div>
 
-            {/* Section 2: Quantities & Weight Specifications */}
             <div className="space-y-4">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1">
-                2. Weight & Touch Details (Decimal precision & Negative adjustments preserved)
+                2. Weight & Touch Details
               </h2>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {/* Pc */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Pieces (Pc)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={pc}
-                    onChange={(e) => {
-                      setPc(e.target.value);
-                      clearError('pc');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.pc ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Pieces (Pc) <span className="text-red-500">*</span></label>
+                  <input type="number" name="pc" step="0.001" value={pc} onChange={(e) => { setPc(e.target.value); clearError('pc'); }} onBlur={() => { if (!pc.trim()) setFieldErrors((prev) => ({ ...prev, pc: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.pc ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
                   {fieldErrors.pc && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.pc}</p>}
                 </div>
-
-                {/* Gross Weight */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Gross Wt (Gr.Wt.)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={grossWeight}
-                    onChange={(e) => {
-                      setGrossWeight(e.target.value);
-                      clearError('gross_weight');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.gross_weight ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
-                  {fieldErrors.gross_weight && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.gross_weight}</p>
-                  )}
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Gross Wt (Gr.Wt.) <span className="text-red-500">*</span></label>
+                  <input type="number" name="gross_weight" step="0.001" value={grossWeight} onChange={(e) => { setGrossWeight(e.target.value); clearError('gross_weight'); }} onBlur={() => { if (!grossWeight.trim()) setFieldErrors((prev) => ({ ...prev, gross_weight: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border bg-white font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.gross_weight ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
+                  {fieldErrors.gross_weight && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.gross_weight}</p>}
                 </div>
-
-                {/* Net Weight */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Net Wt (Net.Wt.)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={netWeight}
-                    onChange={(e) => {
-                      setNetWeight(e.target.value);
-                      clearError('net_weight');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border bg-blue-50/40 font-mono font-bold text-blue-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.net_weight ? 'border-red-400 bg-red-50' : 'border-blue-200'
-                    }`}
-                  />
-                  {fieldErrors.net_weight && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.net_weight}</p>
-                  )}
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Net Wt (Net.Wt.) <span className="text-red-500">*</span></label>
+                  <input type="number" name="net_weight" step="0.001" value={netWeight} onChange={(e) => { setNetWeight(e.target.value); clearError('net_weight'); }} onBlur={() => { if (!netWeight.trim()) setFieldErrors((prev) => ({ ...prev, net_weight: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border bg-blue-50/40 font-mono font-bold text-blue-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.net_weight ? 'border-red-400 bg-red-50' : 'border-blue-200'}`} />
+                  {fieldErrors.net_weight && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.net_weight}</p>}
                 </div>
-
-                {/* Tunch */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tunch %
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={tunch}
-                    onChange={(e) => {
-                      setTunch(e.target.value);
-                      clearError('tunch');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.tunch ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Tunch % <span className="text-red-500">*</span></label>
+                  <input type="number" name="tunch" step="0.001" value={tunch} onChange={(e) => { setTunch(e.target.value); clearError('tunch'); }} onBlur={() => { if (!tunch.trim()) setFieldErrors((prev) => ({ ...prev, tunch: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.tunch ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
                   {fieldErrors.tunch && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.tunch}</p>}
                 </div>
-
-                {/* Wastage */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Wastage (Wstg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={wastage}
-                    onChange={(e) => {
-                      setWastage(e.target.value);
-                      clearError('wastage');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.wastage ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Wastage (Wstg) <span className="text-red-500">*</span></label>
+                  <input type="number" name="wastage" step="0.001" value={wastage} onChange={(e) => { setWastage(e.target.value); clearError('wastage'); }} onBlur={() => { if (!wastage.trim()) setFieldErrors((prev) => ({ ...prev, wastage: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.wastage ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
                   {fieldErrors.wastage && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.wastage}</p>}
                 </div>
-
-                {/* Labour Weight */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Labour Wt (Lbr.Wt)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={labourWeight}
-                    onChange={(e) => {
-                      setLabourWeight(e.target.value);
-                      clearError('labour_weight');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.labour_weight ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
-                  {fieldErrors.labour_weight && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.labour_weight}</p>
-                  )}
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Labour Wt (Lbr.Wt) <span className="text-red-500">*</span></label>
+                  <input type="number" name="labour_weight" step="0.001" value={labourWeight} onChange={(e) => { setLabourWeight(e.target.value); clearError('labour_weight'); }} onBlur={() => { if (!labourWeight.trim()) setFieldErrors((prev) => ({ ...prev, labour_weight: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.labour_weight ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
+                  {fieldErrors.labour_weight && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.labour_weight}</p>}
                 </div>
-
-                {/* Rate */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Rate (₹)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={rate}
-                    onChange={(e) => {
-                      setRate(e.target.value);
-                      clearError('rate');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.rate ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Rate (₹) <span className="text-red-500">*</span></label>
+                  <input type="number" name="rate" step="0.001" value={rate} onChange={(e) => { setRate(e.target.value); clearError('rate'); }} onBlur={() => { if (!rate.trim()) setFieldErrors((prev) => ({ ...prev, rate: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.rate ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
                   {fieldErrors.rate && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.rate}</p>}
                 </div>
-
-                {/* Silver Fine */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Silver Fine (Sil.Fine)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={silverFine}
-                    onChange={(e) => {
-                      setSilverFine(e.target.value);
-                      clearError('silver_fine');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border bg-amber-50/40 font-mono font-bold text-amber-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.silver_fine ? 'border-red-400 bg-red-50' : 'border-amber-200'
-                    }`}
-                  />
-                  {fieldErrors.silver_fine && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.silver_fine}</p>
-                  )}
+                  <label className="block text-xs font-semibold text-amber-900 mb-1">Silver Fine (Sil.Fine) <span className="text-red-500">*</span></label>
+                  <input type="number" name="silver_fine" step="0.001" value={silverFine} onChange={(e) => { setSilverFine(e.target.value); clearError('silver_fine'); }} onBlur={() => { if (!silverFine.trim()) setFieldErrors((prev) => ({ ...prev, silver_fine: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border bg-amber-50/40 font-mono font-bold text-amber-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.silver_fine ? 'border-red-400 bg-red-50' : 'border-amber-200'}`} />
+                  {fieldErrors.silver_fine && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.silver_fine}</p>}
                 </div>
-
-                {/* Total */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Total Amount
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={total}
-                    onChange={(e) => {
-                      setTotal(e.target.value);
-                      clearError('total');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono font-bold text-emerald-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.total ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
+                  <label className="block text-xs font-semibold text-emerald-900 mb-1">Total Amount <span className="text-red-500">*</span></label>
+                  <input type="number" name="total" step="0.001" value={total} onChange={(e) => { setTotal(e.target.value); clearError('total'); }} onBlur={() => { if (!total.trim()) setFieldErrors((prev) => ({ ...prev, total: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono font-bold text-emerald-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.total ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
                   {fieldErrors.total && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.total}</p>}
                 </div>
-
-                {/* Gold Fine */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Gold Fine
-                  </label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    value={goldFine}
-                    onChange={(e) => {
-                      setGoldFine(e.target.value);
-                      clearError('gold_fine');
-                    }}
-                    placeholder="0.000"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
-                      fieldErrors.gold_fine ? 'border-red-400 bg-red-50' : 'border-slate-300'
-                    }`}
-                  />
-                  {fieldErrors.gold_fine && (
-                    <p className="text-[11px] text-red-500 mt-1">{fieldErrors.gold_fine}</p>
-                  )}
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Gold Fine <span className="text-red-500">*</span></label>
+                  <input type="number" name="gold_fine" step="0.001" value={goldFine} onChange={(e) => { setGoldFine(e.target.value); clearError('gold_fine'); }} onBlur={() => { if (!goldFine.trim()) setFieldErrors((prev) => ({ ...prev, gold_fine: 'This field is required.' })); }} placeholder="0.000" className={`w-full px-3 py-2 text-sm rounded-lg border font-mono text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${fieldErrors.gold_fine ? 'border-red-400 bg-red-50' : 'border-slate-300'}`} />
+                  {fieldErrors.gold_fine && <p className="text-[11px] text-red-500 mt-1">{fieldErrors.gold_fine}</p>}
                 </div>
               </div>
             </div>
 
-            {/* Form Action Buttons */}
             <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
               <button
                 type="button"

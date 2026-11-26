@@ -1,0 +1,288 @@
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, PackageCheck, Save, Plus, Trash2 } from 'lucide-react';
+import { createKarigarReceive, fetchKarigarReceiveFilterOptions } from '../../services/api';
+import type { KarigarReceiveItem } from '../../types';
+import { showErrorAlert } from '../../utils/alert';
+
+interface Props { onBackToList: () => void; }
+
+const EMPTY_ITEM = (): KarigarReceiveItem => ({
+  item_name: '', item_type: '', metal_type: 'SILVER', purity: 92.5,
+  gross_weight: 0, net_weight: 0, diamond_weight: 0, stone_weight: 0,
+  quantity: 1, fine_weight: 0, scrap_weight: 0, dust_weight: 0, loss_weight: 0,
+  labour_rate: 0, labour_amount: 0, remarks: '',
+});
+
+export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
+  const [form, setForm] = useState({
+    receive_date: new Date().toISOString().split('T')[0],
+    voucher_no: '', issue_id: '', karigar_id: '', karigar_name: '', lot_no: '', narration: '', remarks: '',
+  });
+  const [items, setItems] = useState<KarigarReceiveItem[]>([EMPTY_ITEM()]);
+  const [karigars, setKarigars] = useState<{ id: number; name: string }[]>([]);
+  const [openIssues, setOpenIssues] = useState<{ id: number; voucher_no: string; karigar_name: string; lot_no: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    fetchKarigarReceiveFilterOptions().then(d => {
+      setKarigars(d.karigars);
+      setOpenIssues(d.open_issues);
+    }).catch(() => {});
+  }, []);
+
+  const updateItem = (idx: number, field: keyof KarigarReceiveItem, val: string | number) => {
+    setItems(prev => {
+      const updated = [...prev];
+      const it = { ...updated[idx], [field]: val };
+      if (field === 'net_weight' || field === 'purity') {
+        it.fine_weight = parseFloat((Number(it.net_weight) * Number(it.purity) / 100).toFixed(3));
+      }
+      if (field === 'labour_rate' || field === 'quantity') {
+        it.labour_amount = parseFloat((Number(it.labour_rate) * Number(it.quantity)).toFixed(2));
+      }
+      // Calculate loss = issued - received fine - scrap - dust (simplified)
+      if (field === 'fine_weight' || field === 'scrap_weight' || field === 'dust_weight') {
+        it.loss_weight = parseFloat(Math.max(0, Number(it.fine_weight) - Number(it.scrap_weight) - Number(it.dust_weight)).toFixed(3));
+      }
+      updated[idx] = it;
+      return updated;
+    });
+  };
+
+  const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
+  const addItem    = () => setItems(prev => [...prev, EMPTY_ITEM()]);
+
+  const totals = items.reduce((acc, it) => ({
+    silver: acc.silver + (it.metal_type === 'SILVER' ? Number(it.fine_weight) : 0),
+    gold: acc.gold   + (it.metal_type === 'GOLD'   ? Number(it.fine_weight) : 0),
+    amount: acc.amount + Number(it.labour_amount),
+  }), { silver: 0, gold: 0, amount: 0 });
+
+  const handleIssueChange = (issueId: string) => {
+    const iss = openIssues.find(i => String(i.id) === issueId);
+    setForm(f => ({
+      ...f, issue_id: issueId,
+      lot_no: iss?.lot_no ?? f.lot_no,
+      karigar_name: iss?.karigar_name ?? f.karigar_name,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.issue_id) { setError('Please select an Issue reference.'); return; }
+    if (items.some(it => !it.item_name.trim())) { setError('All item rows must have an item name.'); return; }
+    try {
+      setSaving(true); setError(''); setSuccess('');
+      await createKarigarReceive({ ...form, issue_id: Number(form.issue_id), karigar_id: Number(form.karigar_id), items } as any);
+      setSuccess('Receive voucher created successfully!');
+      setTimeout(onBackToList, 1000);
+    } catch (e: any) {
+      setError(e.message);
+      showErrorAlert('Failed to create receive voucher: ' + (e.message || ''));
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-slate-50">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4">
+        <button onClick={onBackToList} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500">
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center border border-green-200">
+            <PackageCheck className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">New Karigar Receive</h1>
+            <p className="text-xs text-slate-500">Record goods and metal received back from karigar</p>
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex-1 overflow-auto px-6 py-6 max-w-6xl mx-auto w-full">
+        {error && <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-600 text-sm">{error}</div>}
+        {success && <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl text-green-600 text-xs">{success}</div>}
+
+        {/* Header */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-5">
+          <h2 className="text-sm font-semibold text-slate-700 mb-4 pb-2 border-b border-slate-100">Receive Details</h2>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Receive Date *</label>
+              <input type="date" value={form.receive_date} onChange={e => setForm(f => ({ ...f, receive_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Voucher No (auto if blank)</label>
+              <input type="text" value={form.voucher_no} onChange={e => setForm(f => ({ ...f, voucher_no: e.target.value }))}
+                placeholder="e.g. KR-2026-002"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Issue Reference *</label>
+              <select value={form.issue_id} onChange={e => handleIssueChange(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">Select Open Issue</option>
+                {openIssues.map(i => <option key={i.id} value={i.id}>{i.voucher_no} – {i.karigar_name} {i.lot_no ? `(${i.lot_no})` : ''}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Karigar</label>
+              <input type="text" value={form.karigar_name} readOnly
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Lot No</label>
+              <input type="text" value={form.lot_no} onChange={e => setForm(f => ({ ...f, lot_no: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Narration</label>
+              <input type="text" value={form.narration} onChange={e => setForm(f => ({ ...f, narration: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+          </div>
+        </div>
+
+        {/* Items Grid */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-slate-700">Item Details</h2>
+            <button type="button" onClick={addItem}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-600 border border-green-200 rounded-lg hover:bg-green-50">
+              <Plus className="w-3.5 h-3.5" /> Add Row
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th className="px-2 py-2 text-left font-semibold text-slate-600 min-w-24">Item Name *</th>
+                  <th className="px-2 py-2 text-left font-semibold text-slate-600 min-w-16">Type</th>
+                  <th className="px-2 py-2 text-left font-semibold text-slate-600 min-w-16">Metal</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-14">Purity%</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-16">Gross Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-16">Net Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-14">Fine Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-14">Scrap Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-14">Dust Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-14">Loss Wt</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-10">Qty</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-16">Labour/pc</th>
+                  <th className="px-2 py-2 text-right font-semibold text-slate-600 min-w-16">Labour Amt</th>
+                  <th className="px-2 py-2 text-center font-semibold text-slate-600 min-w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it, idx) => (
+                  <tr key={idx} className="border-b border-slate-100">
+                    <td className="px-2 py-1.5">
+                      <input type="text" value={it.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="text" value={it.item_type ?? ''} onChange={e => updateItem(idx, 'item_type', e.target.value)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <select value={it.metal_type} onChange={e => updateItem(idx, 'metal_type', e.target.value)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <option value="SILVER">Silver</option>
+                        <option value="GOLD">Gold</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.purity} step="0.01" min="0" max="100"
+        onChange={e => updateItem(idx, 'purity', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.gross_weight} step="0.001" min="0"
+        onChange={e => updateItem(idx, 'gross_weight', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.net_weight} step="0.001" min="0"
+        onChange={e => updateItem(idx, 'net_weight', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.fine_weight} readOnly
+                        className="w-full px-2 py-1 text-xs border border-slate-200 rounded bg-slate-50 text-right font-semibold text-green-600" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.scrap_weight} step="0.001" min="0"
+        onChange={e => updateItem(idx, 'scrap_weight', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.dust_weight} step="0.001" min="0"
+        onChange={e => updateItem(idx, 'dust_weight', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.loss_weight} readOnly
+                        className="w-full px-2 py-1 text-xs border border-slate-200 rounded bg-slate-50 text-right font-semibold" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.quantity} step="1" min="1"
+        onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.labour_rate} step="0.01" min="0"
+        onChange={e => updateItem(idx, 'labour_rate', parseFloat(e.target.value) || 0)}
+                        className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <input type="number" value={it.labour_amount} readOnly
+                        className="w-full px-2 py-1 text-xs border border-slate-200 rounded bg-slate-50 text-right font-semibold" />
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {items.length > 1 && (
+                        <button type="button" onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Totals */}
+          <div className="mt-4 flex gap-6 justify-end text-xs">
+            <div className="text-right">
+              <div className="text-slate-500">Total Gold Fine</div>
+              <div className="font-bold text-slate-800">{totals.gold.toFixed(3)} g</div>
+            </div>
+            <div className="text-right">
+              <div className="text-slate-500">Total Silver Fine</div>
+              <div className="font-bold text-green-700">{totals.silver.toFixed(3)} g</div>
+            </div>
+            <div className="text-right">
+              <div className="text-slate-500">Total Labour</div>
+              <div className="font-bold">₹{totals.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button type="button" onClick={onBackToList}
+            className="px-5 py-2.5 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-60">
+            <Save className="w-4 h-4" />{saving ? 'Saving...' : 'Save Receive'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};

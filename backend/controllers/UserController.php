@@ -37,6 +37,7 @@ class UserController {
         $body = Validator::getJsonBody();
         $name     = trim($body['name'] ?? '');
         $rawMobile= $body['mobile'] ?? '';
+        $email    = trim($body['email'] ?? '');
         $password = $body['password'] ?? '';
         $role     = strtoupper(trim($body['role'] ?? 'STAFF'));
 
@@ -49,6 +50,10 @@ class UserController {
             Response::error('Full name is required', 400);
         }
 
+        if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Response::error('Valid email address is required', 400);
+        }
+
         if (strlen($password) < 6) {
             Response::error('Password must be at least 6 characters', 400);
         }
@@ -57,12 +62,16 @@ class UserController {
             Response::error('Mobile number is already registered', 400);
         }
 
+        if (User::findByEmail($email)) {
+            Response::error('Email address is already registered', 400);
+        }
+
         if (!in_array($role, ['ADMIN', 'STAFF'])) {
             $role = 'STAFF';
         }
 
         $hashedPassword = password_hash($password, PASSWORD_BCRYPT);
-        $user = User::create($name, $cleanMobile, $hashedPassword, $role);
+        $user = User::create($name, $cleanMobile, $hashedPassword, $role, $email);
 
         Response::json($user, 201);
     }
@@ -91,6 +100,18 @@ class UserController {
                 }
                 $updateData['mobile'] = $cleanMobile;
             }
+        }
+
+        if (isset($body['email'])) {
+            $email = trim($body['email']);
+            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                Response::error('Valid email address is required', 400);
+            }
+            $existing = User::findByEmail($email);
+            if ($existing && $existing['id'] !== $id) {
+                Response::error('Email address already in use by another user', 400);
+            }
+            $updateData['email'] = $email;
         }
 
         if (isset($body['is_active'])) {

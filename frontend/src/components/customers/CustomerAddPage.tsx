@@ -87,44 +87,153 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
     }
   };
 
-  const validateForm = (): boolean => {
+  const validateForm = (): Record<string, string> => {
     const newErrors: Record<string, string> = {};
 
     // 1. Name is required
     if (!formData.Name.trim()) {
-      newErrors.Name = 'Customer Name is required.';
+      newErrors.Name = 'This field is required.';
     }
 
-    // 2. Mobile validation
+    // 2. Gender is required
+    if (!formData.Gender) {
+      newErrors.Gender = 'This field is required.';
+    }
+
+    // 3. Mobile validation (required if provided)
     if (formData.Mobile.trim()) {
       const cleanMobile = formData.Mobile.trim().replace(/\s+|-/g, '');
       if (!/^\d{10}$/.test(cleanMobile)) {
         newErrors.Mobile = 'Mobile number must be exactly 10 digits.';
       }
+    } else {
+      newErrors.Mobile = 'Mobile number is required.';
     }
 
-    // 3. Email validation
+    // 4. Email validation (required if provided)
     if (formData.Email.trim()) {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.Email.trim())) {
         newErrors.Email = 'Please enter a valid email address.';
       }
+    } else {
+      newErrors.Email = 'Email address is required.';
     }
 
-    // 4. PIN Code validation
+    // 5. PIN Code validation (required if provided)
     if (formData.Pin.trim()) {
       if (!/^\d{6}$/.test(formData.Pin.trim())) {
         newErrors.Pin = 'PIN Code must be exactly 6 digits.';
       }
+    } else {
+      newErrors.Pin = 'PIN Code is required.';
     }
 
-    // 5. PAN Number validation
+    // 6. PAN Number validation (required if provided)
+    if (formData.PANNo.trim()) {
+      if (!/^[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}$/.test(formData.PANNo.trim())) {
+        newErrors.PANNo = 'PAN Number must be in format ABCDE1234F.';
+      }
+    } else {
+      newErrors.PANNo = 'PAN Number is required.';
+    }
+
+    // 7. Aadhaar Number validation (required if provided)
+    if (formData.Aadhaar.trim()) {
+      const cleanAadhaar = formData.Aadhaar.trim().replace(/\s+|-/g, '');
+      if (!/^\d{12}$/.test(cleanAadhaar)) {
+        newErrors.Aadhaar = 'Aadhaar Number must be exactly 12 digits.';
+      }
+    } else {
+      newErrors.Aadhaar = 'Aadhaar Number is required.';
+    }
+
+    // 8. GST Number validation (required if provided)
+    if (formData.GSTNo.trim()) {
+      if (!/^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}Z[0-9A-Za-z]{1}$/.test(formData.GSTNo.trim())) {
+        newErrors.GSTNo = 'GST Number must be a valid 15-character GSTIN.';
+      }
+    } else {
+      newErrors.GSTNo = 'GST Number is required.';
+    }
+
+    // 9. Potential validation (required if provided)
+    if (formData.Potential !== '') {
+      const pot = parseFloat(formData.Potential);
+      if (isNaN(pot)) {
+        newErrors.Potential = 'Must be a valid number.';
+      }
+    } else {
+      newErrors.Potential = 'Potential is required.';
+    }
+
+    // 10. DOB validation
+    if (formData.DOB && formData.DOB > todayStr) {
+      newErrors.DOB = 'Date of Birth cannot be in the future.';
+    }
+
+    // 11. Spouse DOB validation
+    if (formData.SpouseDOB && formData.SpouseDOB > todayStr) {
+      newErrors.SpouseDOB = 'Spouse Date of Birth cannot be in the future.';
+    }
+
+    // 12. Education is required
+    if (!formData.Education.trim()) {
+      newErrors.Education = 'This field is required.';
+    }
+
+    // 13. Marital Status is required
+    if (!formData.Married) {
+      newErrors.Married = 'This field is required.';
+    }
+
+    // 14. Spouse Name is required
+    if (!formData.Spouse.trim()) {
+      newErrors.Spouse = 'This field is required.';
+    }
+
+    // 15. Anniversary is required
+    if (!formData.Anniversary.trim()) {
+      newErrors.Anniversary = 'This field is required.';
+    }
+
+    // 16. Firm/Company Name is required
+    if (!formData.FirmName.trim()) {
+      newErrors.FirmName = 'This field is required.';
+    }
+
+    // 17. City is required
+    if (!formData.City.trim()) {
+      newErrors.City = 'This field is required.';
+    }
+
+    // 18. Address Line 1 is required
+    if (!formData.Address1.trim()) {
+      newErrors.Address1 = 'This field is required.';
+    }
+
+    // 19. Address Line 2 is required
+    if (!formData.Address2.trim()) {
+      newErrors.Address2 = 'This field is required.';
+    }
+
+    // 20. Address Line 3 is required
+    if (!formData.Address3.trim()) {
+      newErrors.Address3 = 'This field is required.';
+    }
+
+    // 21. Location/Area is required
+    if (!formData.Location.trim()) {
+      newErrors.Location = 'This field is required.';
+    }
+
+    // 22. PAN No format validation (required if provided)
     if (formData.PANNo.trim()) {
       if (!/^[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}$/.test(formData.PANNo.trim())) {
         newErrors.PANNo = 'PAN Number must be in format ABCDE1234F.';
       }
     }
 
-    // 6. Aadhaar Number validation
+    // 23. Aadhaar format validation (required if provided)
     if (formData.Aadhaar.trim()) {
       const cleanAadhaar = formData.Aadhaar.trim().replace(/\s+|-/g, '');
       if (!/^\d{12}$/.test(cleanAadhaar)) {
@@ -132,41 +241,36 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
       }
     }
 
-    // 7. GST Number validation
+    // 24. GST format validation (required if provided)
     if (formData.GSTNo.trim()) {
       if (!/^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}Z[0-9A-Za-z]{1}$/.test(formData.GSTNo.trim())) {
         newErrors.GSTNo = 'GST Number must be a valid 15-character GSTIN.';
       }
     }
 
-    // 8. Potential validation
-    if (formData.Potential !== '') {
-      const pot = parseFloat(formData.Potential);
-      if (isNaN(pot) || pot < 0) {
-        newErrors.Potential = 'Potential must be a non-negative number.';
-      }
-    }
-
-    // 9. DOB validation
-    if (formData.DOB && formData.DOB > todayStr) {
-      newErrors.DOB = 'Date of Birth cannot be in the future.';
-    }
-
-    // 10. Spouse DOB validation
-    if (formData.SpouseDOB && formData.SpouseDOB > todayStr) {
-      newErrors.SpouseDOB = 'Spouse Date of Birth cannot be in the future.';
-    }
-
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const firstInvalid = Object.keys(newErrors)[0];
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
+                    document.querySelector('.border-red-500, .border-red-400')) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
+    return newErrors;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setServerError(null);
 
-    if (!validateForm()) {
-      showValidationAlert('Please fill in all required fields and correct the highlighted errors.', 'Validation Warning');
+    const validationErrors = validateForm();
+    setErrors(validationErrors);
+
+    if (Object.keys(validationErrors).length > 0) {
       return;
     }
 
@@ -190,6 +294,9 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
         navigate('/customers');
       }
     } catch (err: any) {
+      if (err?.validation_errors) {
+        setErrors(err.validation_errors);
+      }
       const msg = err.message || 'Failed to create customer. Please try again.';
       setServerError(msg);
       showErrorAlert(msg, 'Error!');
@@ -278,8 +385,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
             Reset
           </button>
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
+            form="customer-add-form"
             disabled={isSubmitting}
             className="px-5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-98 transition-all flex items-center gap-1.5 shadow-sm shadow-blue-500/20 disabled:opacity-50"
           >
@@ -313,7 +420,7 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form id="customer-add-form" onSubmit={handleSubmit} className="space-y-6">
         {/* SECTION 1: Personal Information */}
         <div className="bg-white dark:bg-[#0f1319] rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs">
           <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-100 dark:border-slate-800">
@@ -333,6 +440,11 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 name="Name"
                 value={formData.Name}
                 onChange={handleInputChange}
+                onBlur={() => {
+                  if (!formData.Name.trim()) {
+                    setErrors((prev) => ({ ...prev, Name: 'This field is required.' }));
+                  }
+                }}
                 placeholder="e.g. Rajesh Kumar Sharma"
                 className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
                   errors.Name ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'

@@ -1,117 +1,55 @@
-import React, { useState, useEffect } from 'react';
-import { Phone, Lock, Eye, EyeOff, Send, CheckCircle2, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mail, Send, CheckCircle2, ArrowLeft, Loader2, KeyRound } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { sendOtpApi, resetPasswordApi } from '../services/api';
+import { forgotPasswordEmailApi } from '../services/api';
 import { AuthBrandPanel } from './AuthBrandPanel';
 
 interface ForgotPasswordPageProps {
   onGoLogin: () => void;
+  onGoResetWithToken?: (token: string) => void;
 }
 
-export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onGoLogin }) => {
+export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onGoLogin, onGoResetWithToken }) => {
   const { theme, toggleTheme } = useTheme();
 
-  const [mobile, setMobile] = useState('');
-  const [step, setStep] = useState<'SEND_OTP' | 'VERIFY_AND_RESET'>('SEND_OTP');
-  const [otp, setOtp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [showConfirmPw, setShowConfirmPw] = useState(false);
-
-  // Status & timer states
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [cooldown, setCooldown] = useState(0);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
 
-  // Timer countdown effect
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const interval = setInterval(() => {
-      setCooldown((c) => (c > 0 ? c - 1 : 0));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [cooldown]);
+  const validate = () => {
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setEmailError('Email address is required.');
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Please enter a valid email address.');
+      return false;
+    }
+    setEmailError(null);
+    return true;
+  };
 
-  // Handle Send OTP
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handleSendLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccessMsg(null);
 
-    const cleanMobile = mobile.trim().replace(/\D/g, '');
-    if (cleanMobile.length < 10) {
-      setError('Please enter a valid 10-digit registered mobile number.');
+    if (!validate()) {
       return;
     }
 
     setLoading(true);
     try {
-      const res = await sendOtpApi(cleanMobile);
-      if (res.dev_otp) {
-        setSuccessMsg(`OTP sent via SMS. [Dev Fallback OTP: ${res.dev_otp}]`);
-      } else {
-        setSuccessMsg(res.message || 'OTP verification code has been dispatched via SMS.');
+      const res = await forgotPasswordEmailApi(email.trim());
+      setSubmitted(true);
+      if (res.dev_reset_url) {
+        setDevResetUrl(res.dev_reset_url);
       }
-      setCooldown(res.cooldown_seconds || 60);
-      setStep('VERIFY_AND_RESET');
     } catch (err: any) {
-      setError(err.message || 'Failed to dispatch verification OTP. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle Resend OTP
-  const handleResendOtp = async () => {
-    if (cooldown > 0 || loading) return;
-    setError(null);
-    const cleanMobile = mobile.trim().replace(/\D/g, '');
-    setLoading(true);
-    try {
-      const res = await sendOtpApi(cleanMobile);
-      setSuccessMsg('A new verification OTP has been dispatched to your mobile.');
-      setCooldown(res.cooldown_seconds || 60);
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend OTP.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle Password Reset Submission
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const cleanMobile = mobile.trim().replace(/\D/g, '');
-    const cleanOtp = otp.trim();
-
-    if (!cleanOtp || cleanOtp.length < 4) {
-      setError('Please enter the verification OTP received on your mobile.');
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      setError('New password must be at least 6 characters long.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await resetPasswordApi(cleanMobile, cleanOtp, newPassword);
-      setSuccessMsg(res.message || 'Password successfully reset! Redirecting to sign in...');
-      setTimeout(() => {
-        onGoLogin();
-      }, 1800);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reset password. Please check your OTP.');
+      setError(err.message || 'Failed to dispatch reset email. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -152,13 +90,16 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onGoLogi
           <div className="my-auto">
             {/* Form Title */}
             <div className="mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 mb-3">
+                <KeyRound className="w-5 h-5" />
+              </div>
               <h2 className="font-serif text-2xl md:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
                 Forgot Password?
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                {step === 'SEND_OTP'
-                  ? "Enter your registered mobile number and we'll send you an OTP"
-                  : `Enter the verification OTP sent to +91 ${mobile} and choose a new password`}
+                {!submitted
+                  ? 'Enter your registered email address and we will send you a secure password reset link.'
+                  : 'Check your email inbox for your password reset link.'}
               </p>
             </div>
 
@@ -170,32 +111,39 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onGoLogi
               </div>
             )}
 
-            {/* Success Banner */}
-            {successMsg && (
-              <div className="mb-4 px-3.5 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            {/* STEP 1: Enter Mobile & Request OTP */}
-            {step === 'SEND_OTP' ? (
-              <form onSubmit={handleSendOtp} className="space-y-4">
+            {!submitted ? (
+              <form onSubmit={handleSendLink} className="space-y-4" noValidate>
+                {/* Email Field */}
                 <div>
+                  <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Email Address
+                  </label>
                   <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                     <input
-                      type="tel"
-                      value={mobile}
-                      onChange={(e) => setMobile(e.target.value)}
-                      required
-                      placeholder="Registered Mobile Number"
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (emailError) setEmailError(null);
+                      }}
+                      placeholder="name@domain.com"
+                      autoComplete="email"
+                      className={`w-full pl-11 pr-4 py-3 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${
+                        emailError
+                          ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                          : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                      }`}
                     />
                   </div>
+                  {emailError && (
+                    <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                      <span>•</span> {emailError}
+                    </p>
+                  )}
                 </div>
 
-                {/* Send OTP Button */}
+                {/* Send Reset Link Button */}
                 <button
                   type="submit"
                   disabled={loading}
@@ -204,127 +152,83 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onGoLogi
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending OTP...</span>
+                      <span>Sending Reset Link...</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>Send OTP</span>
+                      <span>Send Reset Link</span>
                     </>
                   )}
                 </button>
               </form>
             ) : (
-              /* STEP 2: Verify OTP & Enter New Password */
-              <form onSubmit={handleResetPassword} className="space-y-3.5">
-                {/* Mobile number display */}
-                <div className="flex items-center justify-between text-xs px-1 text-slate-500 dark:text-slate-400">
-                  <span>Mobile: <strong className="text-slate-800 dark:text-slate-200">+91 {mobile}</strong></span>
+              <div className="space-y-4">
+                {/* Confirmation Box */}
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>Reset Link Sent</span>
+                  </div>
+                  <p className="text-xs text-emerald-700 dark:text-emerald-300/90 leading-relaxed">
+                    If an account exists with <strong className="font-semibold">{email}</strong>, you will receive an email shortly with a secure link to reset your password.
+                  </p>
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400/80">
+                    The reset link is valid for 60 minutes.
+                  </p>
+                </div>
+
+                {/* Development Mode Quick Link (Visible if SMTP fallback / dev url present) */}
+                {devResetUrl && (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-1.5">
+                    <div className="font-semibold text-amber-500 dark:text-amber-400 text-[11px] uppercase tracking-wider">
+                      🛠️ Dev / Local Preview Link
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Click below to open the reset password screen directly with this generated token:
+                    </p>
+                    {onGoResetWithToken ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = new URL(devResetUrl, window.location.origin);
+                          const token = url.searchParams.get('token') || '';
+                          onGoResetWithToken(token);
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+                      >
+                        Open Reset Password Form
+                      </button>
+                    ) : (
+                      <a
+                        href={devResetUrl}
+                        className="block py-2 px-3 text-center rounded-lg bg-amber-500 text-slate-950 font-bold text-xs hover:bg-amber-400 transition"
+                      >
+                        Open Reset Password Form
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Resend option */}
+                <div className="text-center text-xs text-slate-500 dark:text-slate-400 pt-2">
+                  Didn't receive an email?{' '}
                   <button
                     type="button"
-                    onClick={() => setStep('SEND_OTP')}
-                    className="text-amber-600 dark:text-amber-400 hover:underline text-[11px] cursor-pointer"
+                    onClick={() => {
+                      setSubmitted(false);
+                      setDevResetUrl(null);
+                    }}
+                    className="text-amber-600 dark:text-amber-400 hover:underline font-medium cursor-pointer"
                   >
-                    Change
+                    Try another email address
                   </button>
                 </div>
-
-                {/* OTP Field with Resend countdown */}
-                <div>
-                  <div className="relative">
-                    <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                      maxLength={6}
-                      required
-                      placeholder="Enter 6-digit OTP"
-                      className="w-full pl-11 pr-28 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 font-mono tracking-wider text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
-                    />
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      {cooldown > 0 ? (
-                        <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-                          Resend in {cooldown}s
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={handleResendOtp}
-                          disabled={loading}
-                          className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
-                        >
-                          Resend OTP
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* New Password */}
-                <div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                    <input
-                      type={showNewPw ? 'text' : 'password'}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      required
-                      placeholder="New Password (min 6 characters)"
-                      className="w-full pl-11 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPw((p) => !p)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 transition cursor-pointer"
-                    >
-                      {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Confirm New Password */}
-                <div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
-                    <input
-                      type={showConfirmPw ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      required
-                      placeholder="Confirm New Password"
-                      className="w-full pl-11 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPw((p) => !p)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 transition cursor-pointer"
-                    >
-                      {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Reset Password Button */}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#d4af37] via-[#f3c959] to-[#b38a1f] hover:brightness-105 active:scale-[0.99] text-slate-950 font-bold text-xs tracking-wide shadow-[0_4px_24px_rgba(212,175,55,0.35)] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Resetting Password...</span>
-                    </>
-                  ) : (
-                    <span>Reset Password</span>
-                  )}
-                </button>
-              </form>
+              </div>
             )}
 
             {/* Back to Login link */}
-            <div className="mt-6 text-center">
+            <div className="mt-8 text-center">
               <button
                 type="button"
                 onClick={onGoLogin}

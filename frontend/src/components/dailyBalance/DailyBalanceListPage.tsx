@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
   Filter,
   RotateCcw,
-  Printer,
   FileSpreadsheet,
   FileText,
   X,
@@ -22,7 +21,18 @@ import {
   Scale,
   AlertCircle,
   CheckCircle2,
-  Package,
+  Calculator,
+  PhoneCall,
+  Calendar,
+  Layers,
+  TrendingUp,
+  SlidersHorizontal,
+  DollarSign,
+  Bookmark,
+  CheckSquare,
+  Square,
+  Printer,
+  MessageCircle,
 } from 'lucide-react';
 import {
   DailyBalanceRecord,
@@ -38,6 +48,12 @@ import {
   fetchDailyBalanceAll,
 } from '../../services/api';
 import { DailyBalanceViewModal } from './DailyBalanceViewModal';
+import {
+  printReport,
+  downloadReportPdf,
+  shareReportOnWhatsApp,
+  ReportPdfOptions,
+} from '../../utils/reportPdf';
 
 interface DailyBalanceListPageProps {
   onBackToDashboard?: () => void;
@@ -71,17 +87,71 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
     cities: [],
     states: [],
     groups: [],
+    locations: [],
+    ref_bys: [],
+    occupations: [],
+    types: [],
   });
 
-  // Filter form states
+  // Row 1 - Date & Main filters
+  const [balanceDate, setBalanceDate] = useState<string>('');
+  const [openingDate, setOpeningDate] = useState<string>('');
+  const [selectedState, setSelectedState] = useState<string>('all');
+  const [selectedCity, setSelectedCity] = useState<string>('all');
+  const [selectedLocation, setSelectedLocation] = useState<string>('all');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
+  const [showAdvFilter, setShowAdvFilter] = useState<boolean>(true);
+
+  // Row 2 - Additional filters
+  const [selectedRefBy, setSelectedRefBy] = useState<string>('all');
+  const [selectedOccupation, setSelectedOccupation] = useState<string>('all');
+  const [selectedType, setSelectedType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [appliedSearch, setAppliedSearch] = useState<string>('');
-  const [selectedCity, setSelectedCity] = useState<string>('all');
-  const [selectedState, setSelectedState] = useState<string>('all');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('all');
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
-  const [balanceFilter, setBalanceFilter] = useState<string>('all');
+
+  // Row 3 - Checkboxes
+  const [withBalance, setWithBalance] = useState<boolean>(true);
+  const [isOpening, setIsOpening] = useState<boolean>(false);
+  const [isAllRecords, setIsAllRecords] = useState<boolean>(false);
+  const [hisabFinal, setHisabFinal] = useState<boolean>(false);
+  const [withoutTransact, setWithoutTransact] = useState<boolean>(false);
+  const [zeroBalance, setZeroBalance] = useState<boolean>(false);
+  const [hisabPending, setHisabPending] = useState<boolean>(false);
+  const [diaStnBalance, setDiaStnBalance] = useState<boolean>(false);
+  const [highPriority, setHighPriority] = useState<boolean>(false);
+  const [withLastSpDate, setWithLastSpDate] = useState<boolean>(false);
+
+  // Row 4 - Toolbar state triggers
+  const [groupWiseView, setGroupWiseView] = useState<boolean>(false);
+  const [outstandingOnly, setOutstandingOnly] = useState<boolean>(false);
+  const [agentHpOnly, setAgentHpOnly] = useState<boolean>(false);
+
+  // Modals for Toolbar actions
+  const [showConverterModal, setShowConverterModal] = useState<boolean>(false);
+  const [showPayDateModal, setShowPayDateModal] = useState<boolean>(false);
+  const [showCallLogModal, setShowCallLogModal] = useState<boolean>(false);
+  const [showBalDateModal, setShowBalDateModal] = useState<boolean>(false);
+  const [showAmountFilterModal, setShowAmountFilterModal] = useState<boolean>(false);
+
+  // Specific date/amount modal filter values
+  const [payFromDate, setPayFromDate] = useState<string>('');
+  const [payToDate, setPayToDate] = useState<string>('');
+  const [minAmount, setMinAmount] = useState<string>('');
+  const [maxAmount, setMaxAmount] = useState<string>('');
+
+  // Converter Modal States
+  const [converterMetal, setConverterMetal] = useState<'SILVER' | 'GOLD'>('SILVER');
+  const [converterWeight, setConverterWeight] = useState<string>('100');
+  const [converterPurity, setConverterPurity] = useState<string>('92.5');
+  const [converterRate, setConverterRate] = useState<string>('95');
+
+  // Call Log Modal States
+  const [callLogParty, setCallLogParty] = useState<string>('');
+  const [callLogNotes, setCallLogNotes] = useState<string>('');
+  const [callLogsList, setCallLogsList] = useState<Array<{ id: number; party: string; notes: string; time: string }>>([
+    { id: 1, party: 'Manshukh Bhai Rathod', notes: 'Discussed pending silver fine balance settlement on next Friday.', time: '2026-11-24 10:30' },
+    { id: 2, party: 'Radha Jewellers', notes: 'Payment receipt dispatched via RTGS.', time: '2026-11-23 15:45' },
+  ]);
 
   // Sorting & Pagination
   const [sortBy, setSortBy] = useState<string>('id');
@@ -95,7 +165,7 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
   const [apiError, setApiError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Modals
+  // View & Delete Modals
   const [viewingItem, setViewingItem] = useState<DailyBalanceRecord | null>(null);
   const [deletingItem, setDeletingItem] = useState<DailyBalanceRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -104,22 +174,56 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
   useEffect(() => {
     fetchDailyBalanceFilterOptions()
       .then(setFilterOptions)
-      .catch((err) => console.error('Failed to load daily balance options:', err));
+      .catch((err) => console.error('Failed to load filter options:', err));
   }, []);
 
-  // Fetch data with server-side pagination & SQL grand totals
+  // Dependent dropdown: reload cities when selectedState changes
+  useEffect(() => {
+    if (selectedState && selectedState !== 'all' && selectedState !== 'ALL STATE') {
+      fetchDailyBalanceFilterOptions(selectedState)
+        .then((opts) => {
+          setFilterOptions((prev) => ({ ...prev, cities: opts.cities }));
+        })
+        .catch((err) => console.error('Failed to load dependent cities:', err));
+    }
+  }, [selectedState]);
+
+  // Load daily balance records from backend API
   const loadData = useCallback(async () => {
     setLoading(true);
     setApiError(null);
     try {
       const params: DailyBalanceFilterParams = {
         search: appliedSearch || undefined,
-        city: selectedCity !== 'all' ? selectedCity : undefined,
+        date: balanceDate || undefined,
+        opening_date: openingDate || undefined,
+        from_date: payFromDate || undefined,
+        to_date: payToDate || undefined,
         state: selectedState !== 'all' ? selectedState : undefined,
+        city: selectedCity !== 'all' ? selectedCity : undefined,
+        location: selectedLocation !== 'all' ? selectedLocation : undefined,
         group_id: selectedGroupId !== 'all' ? selectedGroupId : undefined,
-        from_date: fromDate || undefined,
-        to_date: toDate || undefined,
-        balance_filter: balanceFilter !== 'all' ? balanceFilter : undefined,
+        ref_by: selectedRefBy !== 'all' ? selectedRefBy : undefined,
+        occupation: selectedOccupation !== 'all' ? selectedOccupation : undefined,
+        type: selectedType !== 'all' ? selectedType : undefined,
+
+        // Checkbox flags (if isAllRecords is checked, ignore restrictive balance flags)
+        with_balance: !isAllRecords && withBalance ? 1 : undefined,
+        zero_balance: !isAllRecords && zeroBalance ? 1 : undefined,
+        dia_stn_balance: !isAllRecords && diaStnBalance ? 1 : undefined,
+        opening: !isAllRecords && isOpening ? 1 : undefined,
+        hisab_final: !isAllRecords && hisabFinal ? 1 : undefined,
+        hisab_pending: !isAllRecords && hisabPending ? 1 : undefined,
+        without_transact: !isAllRecords && withoutTransact ? 1 : undefined,
+        high_priority: !isAllRecords && highPriority ? 1 : undefined,
+        with_last_sp_date: !isAllRecords && withLastSpDate ? 1 : undefined,
+
+        // Toolbar action filter flags
+        outstanding_only: outstandingOnly ? 1 : undefined,
+        agent_hp_only: agentHpOnly ? 1 : undefined,
+        min_amount: minAmount ? parseFloat(minAmount) : undefined,
+        max_amount: maxAmount ? parseFloat(maxAmount) : undefined,
+
         sort_by: sortBy,
         sort_order: sortOrder,
         page: currentPage,
@@ -140,12 +244,31 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
     }
   }, [
     appliedSearch,
-    selectedCity,
+    balanceDate,
+    openingDate,
+    payFromDate,
+    payToDate,
     selectedState,
+    selectedCity,
+    selectedLocation,
     selectedGroupId,
-    fromDate,
-    toDate,
-    balanceFilter,
+    selectedRefBy,
+    selectedOccupation,
+    selectedType,
+    withBalance,
+    zeroBalance,
+    diaStnBalance,
+    isOpening,
+    isAllRecords,
+    hisabFinal,
+    hisabPending,
+    withoutTransact,
+    highPriority,
+    withLastSpDate,
+    outstandingOnly,
+    agentHpOnly,
+    minAmount,
+    maxAmount,
     sortBy,
     sortOrder,
     currentPage,
@@ -156,386 +279,255 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
     loadData();
   }, [loadData]);
 
-  // Toast helper
+  // Toast notifier
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
-    setTimeout(() => setToastMessage(null), 4500);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Submit filter / search
-  const handleApplyFilters = (e?: React.FormEvent) => {
+  // Search submission
+  const handleApplySearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setCurrentPage(1);
     setAppliedSearch(searchQuery.trim());
   };
 
+  // Clear / Reset All filters
   const handleClearFilters = () => {
     setSearchQuery('');
     setAppliedSearch('');
-    setSelectedCity('all');
+    setBalanceDate('');
+    setOpeningDate('');
     setSelectedState('all');
+    setSelectedCity('all');
+    setSelectedLocation('all');
     setSelectedGroupId('all');
-    setFromDate('');
-    setToDate('');
-    setBalanceFilter('all');
+    setSelectedRefBy('all');
+    setSelectedOccupation('all');
+    setSelectedType('all');
+    setWithBalance(false);
+    setIsOpening(false);
+    setIsAllRecords(false);
+    setHisabFinal(false);
+    setWithoutTransact(false);
+    setZeroBalance(false);
+    setHisabPending(false);
+    setDiaStnBalance(false);
+    setHighPriority(false);
+    setWithLastSpDate(false);
+    setOutstandingOnly(false);
+    setAgentHpOnly(false);
+    setPayFromDate('');
+    setPayToDate('');
+    setMinAmount('');
+    setMaxAmount('');
+    setGroupWiseView(false);
     setSortBy('id');
     setSortOrder('asc');
     setCurrentPage(1);
   };
 
-  // Sorting toggle
-  const handleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortBy(column);
-      setSortOrder('asc');
-    }
+  // "All Records" button: clear restrictions and load all
+  const handleAllRecords = () => {
+    setIsAllRecords(true);
+    setWithBalance(false);
+    setZeroBalance(false);
+    setDiaStnBalance(false);
+    setIsOpening(false);
+    setHisabFinal(false);
+    setHisabPending(false);
+    setWithoutTransact(false);
+    setHighPriority(false);
+    setWithLastSpDate(false);
+    setOutstandingOnly(false);
+    setAgentHpOnly(false);
     setCurrentPage(1);
   };
 
-  // Navigation handlers
-  const handleGoToAdd = () => {
-    if (onNavigateAdd) {
-      onNavigateAdd();
-    } else {
-      navigate('/daily-balance/add');
-    }
+  // Group-wise records calculation for Group Wise view
+  const groupedItems = useMemo(() => {
+    if (!groupWiseView) return null;
+    const map = new Map<string, DailyBalanceRecord[]>();
+    items.forEach((item) => {
+      const gName = (item as any).group_name || 'General Group';
+      if (!map.has(gName)) map.set(gName, []);
+      map.get(gName)!.push(item);
+    });
+    return Array.from(map.entries()).map(([group, records]) => {
+      const subTotalAmount = records.reduce((s, r) => s + (r.amount || 0), 0);
+      const subTotalGold = records.reduce((s, r) => s + (r.gold_fine || 0), 0);
+      const subTotalSilver = records.reduce((s, r) => s + (r.silver_fine || 0), 0);
+      return { group, records, subTotalAmount, subTotalGold, subTotalSilver };
+    });
+  }, [items, groupWiseView]);
+
+  // Format numbers helper
+  const formatNum = (val: number | string | undefined, decimals = 3) => {
+    const n = parseFloat(String(val || 0));
+    return isNaN(n) ? '0.000' : n.toFixed(decimals);
   };
 
-  const handleGoToEdit = (id: number) => {
-    if (onNavigateEdit) {
-      onNavigateEdit(id);
-    } else {
-      navigate(`/daily-balance/edit/${id}`);
-    }
-  };
-
-  // Delete action
-  const confirmDelete = async () => {
-    if (!deletingItem) return;
-    setIsDeleting(true);
-    try {
-      await deleteDailyBalance(deletingItem.id);
-      showToast(`Daily balance record for "${deletingItem.account_name}" deleted.`);
-      setDeletingItem(null);
-      loadData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete record.', 'error');
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  // Format numbers preserving decimals and negative balances
-  const formatNumber = (val: number | null | undefined, decimals = 3): string => {
-    if (val === null || val === undefined || isNaN(Number(val))) return '—';
-    return Number(val).toFixed(decimals);
-  };
-
-  // Filter params helper for exports
-  const getExportParams = (): DailyBalanceFilterParams => ({
+  // Helper to compile current filter parameters
+  const getCurrentFilterParams = (): DailyBalanceFilterParams => ({
     search: appliedSearch || undefined,
-    city: selectedCity !== 'all' ? selectedCity : undefined,
+    date: balanceDate || undefined,
+    opening_date: openingDate || undefined,
+    from_date: payFromDate || undefined,
+    to_date: payToDate || undefined,
     state: selectedState !== 'all' ? selectedState : undefined,
+    city: selectedCity !== 'all' ? selectedCity : undefined,
+    location: selectedLocation !== 'all' ? selectedLocation : undefined,
     group_id: selectedGroupId !== 'all' ? selectedGroupId : undefined,
-    from_date: fromDate || undefined,
-    to_date: toDate || undefined,
-    balance_filter: balanceFilter !== 'all' ? balanceFilter : undefined,
+    ref_by: selectedRefBy !== 'all' ? selectedRefBy : undefined,
+    occupation: selectedOccupation !== 'all' ? selectedOccupation : undefined,
+    type: selectedType !== 'all' ? selectedType : undefined,
+
+    with_balance: !isAllRecords && withBalance ? 1 : undefined,
+    zero_balance: !isAllRecords && zeroBalance ? 1 : undefined,
+    dia_stn_balance: !isAllRecords && diaStnBalance ? 1 : undefined,
+    opening: !isAllRecords && isOpening ? 1 : undefined,
+    hisab_final: !isAllRecords && hisabFinal ? 1 : undefined,
+    hisab_pending: !isAllRecords && hisabPending ? 1 : undefined,
+    without_transact: !isAllRecords && withoutTransact ? 1 : undefined,
+    high_priority: !isAllRecords && highPriority ? 1 : undefined,
+    with_last_sp_date: !isAllRecords && withLastSpDate ? 1 : undefined,
+
+    outstanding_only: outstandingOnly ? 1 : undefined,
+    agent_hp_only: agentHpOnly ? 1 : undefined,
+    min_amount: minAmount ? parseFloat(minAmount) : undefined,
+    max_amount: maxAmount ? parseFloat(maxAmount) : undefined,
+
     sort_by: sortBy,
     sort_order: sortOrder,
   });
 
-  // Exports
-  const handleExportCSV = async () => {
+  // Build PDF Report Options for Print, PDF Download, and WhatsApp Sharing
+  const getDailyBalanceReportOptions = (records: DailyBalanceRecord[]): ReportPdfOptions => {
+    const today = new Date().toISOString().split('T')[0];
+    const groupLabel = selectedGroupId === 'all'
+      ? 'All'
+      : (filterOptions.groups.find((g) => String(g.id) === selectedGroupId)?.name || selectedGroupId);
+
+    return {
+      title: 'Daily Balance Report',
+      subtitle: 'Rudra Silver Jewellery ERP',
+      filename: `Daily_Balance_${today}.pdf`,
+      filters: [
+        { label: 'Date', value: balanceDate || 'All' },
+        { label: 'State', value: selectedState === 'all' ? 'All' : selectedState },
+        { label: 'City', value: selectedCity === 'all' ? 'All' : selectedCity },
+        { label: 'Group', value: groupLabel },
+        { label: 'Search', value: appliedSearch || 'All' },
+        { label: 'Total Records', value: String(records.length) },
+      ],
+      columns: [
+        { header: 'Bal Date', dataKey: 'balance_date', align: 'center' },
+        { header: 'Account Name', dataKey: 'account_name', align: 'left' },
+        { header: 'City', dataKey: 'city', align: 'left' },
+        { header: 'Group', dataKey: 'group_name', align: 'left' },
+        { header: 'Mobile', dataKey: 'mobile', align: 'center' },
+        { header: 'Gold Fine', dataKey: 'gold_fine', align: 'right' },
+        { header: 'Sil. Fine', dataKey: 'silver_fine', align: 'right' },
+        { header: 'Gold Gr.Wt', dataKey: 'gold_gross_weight', align: 'right' },
+        { header: 'Sil Gr.Wt', dataKey: 'silver_gross_weight', align: 'right' },
+        { header: 'Dia Wt', dataKey: 'diamond_weight', align: 'right' },
+        { header: 'Stn Wt', dataKey: 'stone_weight', align: 'right' },
+        { header: 'Amount (₹)', dataKey: 'amount', align: 'right' },
+      ],
+      data: records.map((r) => ({
+        balance_date: r.balance_date || '—',
+        account_name: r.account_name || '—',
+        city: r.city || '—',
+        group_name: (r as any).group_name || '—',
+        mobile: r.mobile || r.phone || '—',
+        gold_fine: formatNum(r.gold_fine, 3),
+        silver_fine: formatNum(r.silver_fine, 3),
+        gold_gross_weight: formatNum(r.gold_gross_weight, 3),
+        silver_gross_weight: formatNum(r.silver_gross_weight, 3),
+        diamond_weight: formatNum(r.diamond_weight, 3),
+        stone_weight: formatNum(r.stone_weight, 3),
+        amount: formatNum(r.amount, 2),
+      })),
+      totals: {
+        balance_date: '',
+        account_name: 'GRAND TOTAL',
+        city: '',
+        group_name: '',
+        mobile: '',
+        gold_fine: formatNum(totals.total_gold_fine, 3),
+        silver_fine: formatNum(totals.total_silver_fine, 3),
+        gold_gross_weight: formatNum(totals.total_gold_gross_weight, 3),
+        silver_gross_weight: formatNum(totals.total_silver_gross_weight, 3),
+        diamond_weight: formatNum(totals.total_diamond_weight, 3),
+        stone_weight: formatNum(totals.total_stone_weight, 3),
+        amount: `₹${formatNum(totals.total_amount, 2)}`,
+      },
+      orientation: 'landscape',
+    };
+  };
+
+  // 1. Print Handler: Opens formatted print preview
+  const handlePrint = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchDailyBalanceAll(getExportParams());
+      const allRecords = await fetchDailyBalanceAll(getCurrentFilterParams());
       if (!allRecords || allRecords.length === 0) {
-        showToast('No daily balance records available to export.', 'error');
+        showToast('No daily balance data available to print.', 'error');
         return;
       }
-
-      const headers = [
-        'A/c Name',
-        'City',
-        'Mobile',
-        'Phone',
-        'Bal.Date',
-        'Pay Date',
-        'Gold Fine',
-        'Sil.Fine',
-        'Amount',
-        'Dia.Wt.',
-        'Stn.Wt.',
-        'Gr.Wt. [G]',
-        'Gr.Wt. [S]',
-      ];
-
-      const rows = allRecords.map((item) => [
-        `"${(item.account_name || '').replace(/"/g, '""')}"`,
-        `"${item.city || ''}"`,
-        `"${item.mobile || ''}"`,
-        `"${item.phone || ''}"`,
-        `"${item.balance_date || ''}"`,
-        `"${item.payment_date || ''}"`,
-        item.gold_fine,
-        item.silver_fine,
-        item.amount,
-        item.diamond_weight,
-        item.stone_weight,
-        item.gold_gross_weight,
-        item.silver_gross_weight,
-      ]);
-
-      const csvContent =
-        'data:text/csv;charset=utf-8,' +
-        [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `Rudra_Silver_Daily_Balance_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      showToast(`Exported ${allRecords.length} daily balance records to CSV.`);
+      await printReport(getDailyBalanceReportOptions(allRecords));
     } catch (err: any) {
-      showToast(err.message || 'Failed to export CSV.', 'error');
+      showToast(err.message || 'Failed to print report.', 'error');
     } finally {
       setExporting(false);
     }
   };
 
-  const handleExportExcel = async () => {
+  // 2. Download PDF Handler: Triggers direct PDF file download
+  const handleDownloadPDF = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchDailyBalanceAll(getExportParams());
+      const allRecords = await fetchDailyBalanceAll(getCurrentFilterParams());
       if (!allRecords || allRecords.length === 0) {
-        showToast('No daily balance records available to export.', 'error');
+        showToast('No daily balance data available to export as PDF.', 'error');
         return;
       }
-
-      let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
-      html += '<head><meta charset="utf-8"/><style>th { background-color: #f1f5f9; font-weight: bold; border: 1px solid #cbd5e1; } td { border: 1px solid #e2e8f0; }</style></head><body>';
-      html += '<table><thead><tr>';
-      html += '<th>A/c Name</th><th>City</th><th>Mobile</th><th>Phone</th><th>Bal.Date</th><th>Pay Date</th><th>Gold Fine</th><th>Sil.Fine</th><th>Amount</th><th>Dia.Wt.</th><th>Stn.Wt.</th><th>Gr.Wt. [G]</th><th>Gr.Wt. [S]</th>';
-      html += '</tr></thead><tbody>';
-
-      allRecords.forEach((item) => {
-        html += `<tr>
-          <td>${item.account_name}</td>
-          <td>${item.city || ''}</td>
-          <td>${item.mobile || ''}</td>
-          <td>${item.phone || ''}</td>
-          <td>${item.balance_date || ''}</td>
-          <td>${item.payment_date || ''}</td>
-          <td>${item.gold_fine}</td>
-          <td>${item.silver_fine}</td>
-          <td>${item.amount}</td>
-          <td>${item.diamond_weight}</td>
-          <td>${item.stone_weight}</td>
-          <td>${item.gold_gross_weight}</td>
-          <td>${item.silver_gross_weight}</td>
-        </tr>`;
-      });
-
-      html += `<tr style="font-weight:bold; background-color:#e2e8f0;">
-        <td>GRAND TOTAL</td>
-        <td></td><td></td><td></td><td></td><td></td>
-        <td>${totals.total_gold_fine}</td>
-        <td>${totals.total_silver_fine}</td>
-        <td>${totals.total_amount}</td>
-        <td>${totals.total_diamond_weight}</td>
-        <td>${totals.total_stone_weight}</td>
-        <td>${totals.total_gold_gross_weight}</td>
-        <td>${totals.total_silver_gross_weight}</td>
-      </tr>`;
-
-      html += '</tbody></table></body></html>';
-
-      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Rudra_Silver_Daily_Balance_${new Date().toISOString().split('T')[0]}.xls`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      showToast(`Exported ${allRecords.length} daily balance records to Excel.`);
+      await downloadReportPdf(getDailyBalanceReportOptions(allRecords));
     } catch (err: any) {
-      showToast(err.message || 'Failed to export Excel.', 'error');
+      showToast(err.message || 'Failed to download PDF.', 'error');
     } finally {
       setExporting(false);
     }
   };
 
-  const handleExportPDF = async () => {
+  // 3. Share on WhatsApp Handler: Native Web Share API or WhatsApp Web prefilled message
+  const handleShareWhatsApp = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchDailyBalanceAll(getExportParams());
+      const allRecords = await fetchDailyBalanceAll(getCurrentFilterParams());
       if (!allRecords || allRecords.length === 0) {
-        showToast('No daily balance records available to export.', 'error');
+        showToast('No daily balance data available to share on WhatsApp.', 'error');
         return;
       }
-
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        showToast('Pop-up blocked. Please allow pop-ups for PDF export.', 'error');
-        return;
-      }
-
-      const content = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Daily Balance - Rudra Silver ERP</title>
-          <style>
-            @page { size: landscape; margin: 10mm; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10px; color: #1e293b; margin: 0; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 12px; }
-            .title { font-size: 16px; font-weight: bold; color: #1e293b; }
-            .subtitle { font-size: 10px; color: #64748b; margin-top: 2px; }
-            table { width: 100%; border-collapse: collapse; font-size: 9px; }
-            th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 4px; font-weight: bold; text-align: right; }
-            th:first-child, td:first-child { text-align: left; }
-            th:nth-child(2), td:nth-child(2) { text-align: left; }
-            th:nth-child(3), td:nth-child(3), th:nth-child(4), td:nth-child(4), th:nth-child(5), td:nth-child(5), th:nth-child(6), td:nth-child(6) { text-align: center; }
-            td { border: 1px solid #e2e8f0; padding: 5px 4px; text-align: right; }
-            .total-row { background: #fcf8ee; font-weight: bold; border-top: 2px solid #cbd5e1; }
-            .total-box { display: inline-block; background: #fff; border: 1px solid #94a3b8; border-radius: 3px; padding: 2px 6px; }
-            .negative { color: #dc2626; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <div class="title">RUDRA SILVER ERP – DAILY BALANCE REPORT</div>
-              <div class="subtitle">Generated on: ${new Date().toLocaleString()} | Total Records: ${allRecords.length}</div>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>A/c Name</th>
-                <th>City</th>
-                <th>Mobile</th>
-                <th>Phone</th>
-                <th>Bal.Date</th>
-                <th>Pay Date</th>
-                <th>Gold Fine</th>
-                <th>Sil.Fine</th>
-                <th>Amount</th>
-                <th>Dia.Wt.</th>
-                <th>Stn.Wt.</th>
-                <th>Gr.Wt. [G]</th>
-                <th>Gr.Wt. [S]</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${allRecords.map(item => `
-                <tr>
-                  <td>${item.account_name}</td>
-                  <td>${item.city || '—'}</td>
-                  <td>${item.mobile || '—'}</td>
-                  <td>${item.phone || '—'}</td>
-                  <td>${item.balance_date || '—'}</td>
-                  <td>${item.payment_date || '—'}</td>
-                  <td>${formatNumber(item.gold_fine, 3)}</td>
-                  <td class="${item.silver_fine < 0 ? 'negative' : ''}">${formatNumber(item.silver_fine, 3)}</td>
-                  <td class="${item.amount < 0 ? 'negative' : ''}">${formatNumber(item.amount, 2)}</td>
-                  <td>${formatNumber(item.diamond_weight, 3)}</td>
-                  <td>${formatNumber(item.stone_weight, 3)}</td>
-                  <td>${formatNumber(item.gold_gross_weight, 3)}</td>
-                  <td>${formatNumber(item.silver_gross_weight, 3)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-            <tfoot>
-              <tr class="total-row">
-                <td>GRAND TOTAL</td>
-                <td></td><td></td><td></td><td></td><td></td>
-                <td><span class="total-box">${formatNumber(totals.total_gold_fine, 3)}</span></td>
-                <td><span class="total-box ${totals.total_silver_fine < 0 ? 'negative' : ''}">${formatNumber(totals.total_silver_fine, 3)}</span></td>
-                <td><span class="total-box ${totals.total_amount < 0 ? 'negative' : ''}">${formatNumber(totals.total_amount, 2)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_diamond_weight, 3)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_stone_weight, 3)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_gold_gross_weight, 3)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_silver_gross_weight, 3)}</span></td>
-              </tr>
-            </tfoot>
-          </table>
-          <script>window.onload = function() { window.print(); };</script>
-        </body>
-        </html>
-      `;
-
-      printWindow.document.open();
-      printWindow.document.write(content);
-      printWindow.document.close();
-      showToast(`Generated printable PDF with ${allRecords.length} daily balance records.`);
+      await shareReportOnWhatsApp(getDailyBalanceReportOptions(allRecords));
     } catch (err: any) {
-      showToast(err.message || 'Failed to export PDF.', 'error');
+      showToast(err.message || 'Failed to share on WhatsApp.', 'error');
     } finally {
       setExporting(false);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const renderSortIndicator = (col: string) => {
-    if (sortBy !== col) return <ArrowUpDown className="w-3 h-3 text-slate-300 ml-1 inline opacity-0 group-hover:opacity-100 transition" />;
-    return sortOrder === 'asc' ? (
-      <ArrowUp className="w-3 h-3 text-blue-600 ml-1 inline" />
-    ) : (
-      <ArrowDown className="w-3 h-3 text-blue-600 ml-1 inline" />
-    );
-  };
-
-  const hasActiveFilters = Boolean(
-    appliedSearch ||
-    selectedCity !== 'all' ||
-    selectedState !== 'all' ||
-    selectedGroupId !== 'all' ||
-    fromDate ||
-    toDate ||
-    balanceFilter !== 'all'
-  );
-
-  const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const endRecord = Math.min(currentPage * pageSize, totalRecords);
-
-  const getPageNumbers = () => {
-    const pages: (number | string)[] = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push('...');
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      for (let i = start; i <= end; i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push('...');
-      pages.push(totalPages);
-    }
-    return pages;
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6f9] text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#07090e] text-slate-900 dark:text-slate-100 flex flex-col font-sans">
       {/* Toast Notifier */}
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 animate-in slide-in-from-top-3 duration-200">
           <div
-            className={`px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold ${toastMessage.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-red-50 text-red-800 border-red-200'
-              }`}
+            className={`px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold ${
+              toastMessage.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
+                : 'bg-red-50 dark:bg-red-950/80 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700'
+            }`}
           >
             {toastMessage.type === 'success' ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -548,742 +540,1275 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
       )}
 
       {/* Main Container */}
-      <div className="p-4 sm:p-6 lg:p-7 max-w-[1850px] mx-auto w-full space-y-4">
+      <div className="p-3 sm:p-5 lg:p-6 max-w-[1900px] mx-auto w-full space-y-3.5">
         {/* Header Card */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-4 flex items-center justify-between">
+        <div className="bg-white dark:bg-[#0e121b] rounded-2xl border border-slate-200 dark:border-white/[0.08] shadow-xs p-4 flex items-center justify-between">
           <div className="flex items-center space-x-3.5">
-            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-xs shrink-0">
-              <Scale className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-slate-950 font-bold shadow-xs shrink-0">
+              <Scale className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight">Daily Balance</h1>
-              <div className="text-xs text-slate-500 flex items-center space-x-1.5 mt-0.5 font-medium">
-                <span className="hover:text-blue-600 cursor-pointer" onClick={onBackToDashboard}>
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
+                Daily Balance
+              </h1>
+              <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center space-x-1.5 mt-0.5 font-medium">
+                <span className="hover:text-amber-500 cursor-pointer" onClick={onBackToDashboard}>
                   Dashboard
                 </span>
                 <span>/</span>
                 <span>Reports</span>
                 <span>/</span>
-                <span className="text-slate-700 font-semibold">Daily Balance List</span>
+                <span className="text-amber-600 dark:text-amber-400 font-semibold">Daily Balance Sheet</span>
               </div>
             </div>
           </div>
 
-          <div className="px-3.5 py-1 rounded-full bg-[#22c55e] text-white text-xs font-semibold shadow-xs">
-            Daily Balance
+          <div className="flex items-center flex-wrap gap-2 print:hidden">
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={exporting}
+              className="px-3 py-2 rounded-xl border border-slate-300 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 font-semibold text-xs transition flex items-center gap-1.5 bg-white dark:bg-[#141824] cursor-pointer disabled:opacity-50"
+              title="Print Daily Balance Report (A4 Landscape, Repeating Headers)"
+            >
+              <Printer className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Print</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPDF}
+              disabled={exporting}
+              className="px-3 py-2 rounded-xl border border-slate-300 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 font-semibold text-xs transition flex items-center gap-1.5 bg-white dark:bg-[#141824] cursor-pointer disabled:opacity-50"
+              title="Download Daily Balance Report PDF"
+            >
+              <FileText className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
+              <span>PDF</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              disabled={exporting}
+              className="px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-600/40 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-semibold text-xs transition flex items-center gap-1.5 bg-emerald-50/60 dark:bg-emerald-950/20 cursor-pointer disabled:opacity-50"
+              title="Share Daily Balance Report on WhatsApp"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onNavigateAdd}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-xs hover:brightness-105 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Daily Balance</span>
+            </button>
           </div>
         </div>
 
-        {/* Main Content Card */}
-        <div className="bg-white rounded-xl border border-slate-200/90 shadow-2xs p-5 space-y-4">
-          {/* Card Top Row: Title + Action Buttons */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
-            <div className="flex items-center space-x-2.5">
-              <span className="w-1.5 h-6 bg-blue-600 rounded-full inline-block" />
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">Daily Balance Sheet</h2>
+        {/* ADVANCED FILTER & TOOLBAR CARD */}
+        <div className="bg-white dark:bg-[#0e121b] rounded-2xl border border-slate-200 dark:border-white/[0.08] shadow-xs p-4 space-y-3">
+          {/* ROW 1: Date & Main Filters */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 items-end">
+            {/* Balance Date */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={balanceDate}
+                onChange={(e) => {
+                  setBalanceDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+              />
             </div>
 
-            <div className="flex items-center flex-wrap gap-2 print:hidden">
+            {/* Opening Date */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                Opening Date
+              </label>
+              <input
+                type="date"
+                value={openingDate}
+                onChange={(e) => {
+                  setOpeningDate(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            {/* State Wise */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                State
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedState}
+                  onChange={(e) => {
+                    setSelectedState(e.target.value);
+                    setSelectedCity('all');
+                    setCurrentPage(1);
+                  }}
+                  className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="all">ALL STATE</option>
+                  {filterOptions.states.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* City Wise (Dependent on State) */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                City
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedCity}
+                  onChange={(e) => {
+                    setSelectedCity(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="all">ALL CITY</option>
+                  {filterOptions.cities.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Location */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                Location
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => {
+                    setSelectedLocation(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="all">ALL</option>
+                  {(filterOptions.locations || []).map((loc) => (
+                    <option key={loc} value={loc}>
+                      {loc}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Group */}
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                Group
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => {
+                    setSelectedGroupId(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="all">ALL</option>
+                  {filterOptions.groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Adv. Filter Button */}
+            <div>
               <button
                 type="button"
-                onClick={handleGoToAdd}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowAdvFilter((v) => !v)}
+                className={`w-full py-1.5 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                  showAdvFilter
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'border-slate-300 dark:border-white/[0.1] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
+                }`}
               >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>Add Daily Balance</span>
-              </button>
-
-
-
-              <button
-                type="button"
-                onClick={handleExportCSV}
-                disabled={exporting}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span>Export CSV</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportPDF}
-                disabled={exporting}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
-              >
-                <FileText className="w-4 h-4 text-red-600" />
-                <span>Export PDF</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportExcel}
-                disabled={exporting}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
-                <span>Export Excel</span>
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Adv. Filter</span>
               </button>
             </div>
           </div>
 
-          {/* Filters Section (Spec Section 4) */}
-          <div className="bg-slate-50/70 rounded-xl border border-slate-200/80 p-3.5 space-y-3 print:hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5 items-end">
-              {/* Date From */}
+          {/* ROW 2: Additional Dropdown Filters & Search */}
+          {showAdvFilter && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 items-end pt-1 border-t border-slate-100 dark:border-white/[0.04]">
+              {/* Ref By */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Date From</label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => {
-                    setFromDate(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                />
-              </div>
-
-              {/* Date To */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Date To</label>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => {
-                    setToDate(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                />
-              </div>
-
-              {/* State Wise */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">State Wise</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Ref By
+                </label>
                 <div className="relative">
                   <select
-                    value={selectedState}
+                    value={selectedRefBy}
                     onChange={(e) => {
-                      setSelectedState(e.target.value);
+                      setSelectedRefBy(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
                   >
-                    <option value="all">All States</option>
-                    {filterOptions.states.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
+                    <option value="all">ALL</option>
+                    {(filterOptions.ref_bys || []).map((ref) => (
+                      <option key={ref} value={ref}>
+                        {ref}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Location / City */}
+              {/* Occupation */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Location / City</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Occupation
+                </label>
                 <div className="relative">
                   <select
-                    value={selectedCity}
+                    value={selectedOccupation}
                     onChange={(e) => {
-                      setSelectedCity(e.target.value);
+                      setSelectedOccupation(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
                   >
-                    <option value="all">All Cities</option>
-                    {filterOptions.cities.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
+                    <option value="all">ALL</option>
+                    {(filterOptions.occupations || []).map((occ) => (
+                      <option key={occ} value={occ}>
+                        {occ}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Group */}
+              {/* Type */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Group</label>
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Type
+                </label>
                 <div className="relative">
                   <select
-                    value={selectedGroupId}
+                    value={selectedType}
                     onChange={(e) => {
-                      setSelectedGroupId(e.target.value);
+                      setSelectedType(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
                   >
-                    <option value="all">All Groups</option>
-                    {filterOptions.groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
+                    <option value="all">Normal</option>
+                    {(filterOptions.types || ['Normal', 'Customer', 'Supplier', 'Karigar', 'Broker', 'Bank', 'Cash', 'Expense']).map((t) => (
+                      <option key={t} value={t}>
+                        {t}
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Balance Filter Flag (With Balance, Zero Balance, Dia/Stn) */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Balance Type</label>
+              {/* Search with # field */}
+              <div className="lg:col-span-2">
+                <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Search (# A/c, City, Mobile)
+                </label>
                 <div className="relative">
-                  <select
-                    value={balanceFilter}
-                    onChange={(e) => {
-                      setBalanceFilter(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full appearance-none pl-2.5 pr-7 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="all">All Balances</option>
-                    <option value="with_balance">With Balance</option>
-                    <option value="zero_balance">Zero Balance</option>
-                    <option value="dia_stn_balance">Dia / Stn Balance</option>
-                  </select>
-                  <ChevronDown className="w-3.5 h-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Search by A/c Name, City, Mobile */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Search</label>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono text-xs font-bold">#</span>
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleApplyFilters();
-                      }
-                    }}
-                    placeholder="A/c, City, Phone..."
-                    className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-slate-300 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleApplySearch()}
+                    placeholder="Enter name, phone, city..."
+                    className="w-full pl-7 pr-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-400"
                   />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchQuery('');
-                        setAppliedSearch('');
-                        setCurrentPage(1);
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
                 </div>
               </div>
-            </div>
 
-            {/* Action Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-200/60">
-              <div className="flex items-center space-x-2 text-xs text-slate-500">
-                <span>Active Records: <strong className="text-slate-900 font-bold">{totalRecords}</strong></span>
-              </div>
-
-              <div className="flex items-center space-x-2.5">
+              {/* Action Buttons: Search + Filter */}
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => handleApplyFilters()}
-                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                  onClick={handleApplySearch}
+                  className="flex-1 py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-xs transition cursor-pointer flex items-center justify-center gap-1"
                 >
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filter</span>
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Search</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplySearch()}
+                  className="py-1.5 px-3 rounded-xl border border-slate-300 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 font-semibold text-xs transition cursor-pointer"
+                  title="Apply Filter"
+                >
+                  Filter
+                </button>
+              </div>
 
+              {/* Clear / All Records */}
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={handleClearFilters}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-medium shadow-2xs transition flex items-center gap-1 bg-white cursor-pointer"
+                  className="flex-1 py-1.5 px-2.5 rounded-xl border border-slate-300 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400 text-xs transition flex items-center justify-center gap-1 cursor-pointer"
+                  title="Clear all filters"
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                  <RotateCcw className="w-3 h-3" />
                   <span>Clear</span>
                 </button>
-
-                <div className="flex items-center space-x-1.5 text-xs text-slate-600 pl-3 border-l border-slate-200">
-                  <span className="font-medium text-slate-500">Show:</span>
-                  <div className="relative">
-                    <select
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                      className="appearance-none pl-2.5 pr-6 py-1 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
-                    <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleAllRecords}
+                  className="flex-1 py-1.5 px-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold text-xs transition cursor-pointer"
+                  title="Show all unfiltered records"
+                >
+                  All Records
+                </button>
               </div>
-            </div>
-          </div>
-
-          {/* API Error Box */}
-          {apiError && (
-            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between text-red-800 text-xs">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                <span>{apiError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => loadData()}
-                className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-700 transition"
-              >
-                Retry
-              </button>
             </div>
           )}
 
-          {/* 3. Daily Balance Table (14 Columns, Exact Order, Horizontal Scroll) */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[1400px]">
-                <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200 text-slate-800 font-bold text-xs whitespace-nowrap">
-                    {/* 1. A/c Name */}
-                    <th
-                      className="py-3 px-3.5 border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[200px]"
-                      onClick={() => handleSort('account_name')}
-                    >
-                      <span>A/c Name</span>
-                      {renderSortIndicator('account_name')}
-                    </th>
+          {/* ROW 3: Checkbox Filters (All 10 from Screenshot 2) */}
+          <div className="pt-2 border-t border-slate-100 dark:border-white/[0.04]">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-10 gap-2 text-xs">
+              {/* With Balance */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={withBalance}
+                  onChange={(e) => {
+                    setWithBalance(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">With Balance</span>
+              </label>
 
-                    {/* 2. City */}
-                    <th
-                      className="py-3 px-2.5 border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[110px]"
-                      onClick={() => handleSort('city')}
-                    >
-                      <span>City</span>
-                      {renderSortIndicator('city')}
-                    </th>
+              {/* Opening */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={isOpening}
+                  onChange={(e) => {
+                    setIsOpening(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Opening</span>
+              </label>
 
-                    {/* 3. Mobile */}
-                    <th
-                      className="py-3 px-2.5 text-center border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[105px]"
-                      onClick={() => handleSort('mobile')}
-                    >
-                      <span>Mobile</span>
-                      {renderSortIndicator('mobile')}
-                    </th>
+              {/* All */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={isAllRecords}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      handleAllRecords();
+                    } else {
+                      setIsAllRecords(false);
+                    }
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">All</span>
+              </label>
 
-                    {/* 4. Phone */}
-                    <th
-                      className="py-3 px-2.5 text-center border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[95px]"
-                      onClick={() => handleSort('phone')}
-                    >
-                      <span>Phone</span>
-                      {renderSortIndicator('phone')}
-                    </th>
+              {/* Hisab Final */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={hisabFinal}
+                  onChange={(e) => {
+                    setHisabFinal(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Hisab Final</span>
+              </label>
 
-                    {/* 5. Bal.Date */}
-                    <th
-                      className="py-3 px-2.5 text-center border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[95px]"
-                      onClick={() => handleSort('balance_date')}
-                    >
-                      <span>Bal.Date</span>
-                      {renderSortIndicator('balance_date')}
-                    </th>
+              {/* Without Transact */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={withoutTransact}
+                  onChange={(e) => {
+                    setWithoutTransact(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Without Transact</span>
+              </label>
 
-                    {/* 6. Pay Date */}
-                    <th
-                      className="py-3 px-2.5 text-center border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[95px]"
-                      onClick={() => handleSort('payment_date')}
-                    >
-                      <span>Pay Date</span>
-                      {renderSortIndicator('payment_date')}
-                    </th>
+              {/* Zero Balance */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={zeroBalance}
+                  onChange={(e) => {
+                    setZeroBalance(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Zero Balance</span>
+              </label>
 
-                    {/* 7. Gold Fine */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[85px]"
-                      onClick={() => handleSort('gold_fine')}
-                    >
-                      <span>Gold Fine</span>
-                      {renderSortIndicator('gold_fine')}
-                    </th>
+              {/* Hisab Pending */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={hisabPending}
+                  onChange={(e) => {
+                    setHisabPending(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Hisab Pending</span>
+              </label>
 
-                    {/* 8. Sil.Fine */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[90px]"
-                      onClick={() => handleSort('silver_fine')}
-                    >
-                      <span>Sil.Fine</span>
-                      {renderSortIndicator('silver_fine')}
-                    </th>
+              {/* Dia/Stn Balance */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={diaStnBalance}
+                  onChange={(e) => {
+                    setDiaStnBalance(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">Dia/Stn Balance</span>
+              </label>
 
-                    {/* 9. Amount */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[100px]"
-                      onClick={() => handleSort('amount')}
-                    >
-                      <span>Amount</span>
-                      {renderSortIndicator('amount')}
-                    </th>
+              {/* High Priority */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={highPriority}
+                  onChange={(e) => {
+                    setHighPriority(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">High Priority</span>
+              </label>
 
-                    {/* 10. Dia.Wt. */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[80px]"
-                      onClick={() => handleSort('diamond_weight')}
-                    >
-                      <span>Dia.Wt.</span>
-                      {renderSortIndicator('diamond_weight')}
-                    </th>
-
-                    {/* 11. Stn.Wt. */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[80px]"
-                      onClick={() => handleSort('stone_weight')}
-                    >
-                      <span>Stn.Wt.</span>
-                      {renderSortIndicator('stone_weight')}
-                    </th>
-
-                    {/* 12. Gr.Wt. [G] */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[85px]"
-                      onClick={() => handleSort('gold_gross_weight')}
-                    >
-                      <span>Gr.Wt. [G]</span>
-                      {renderSortIndicator('gold_gross_weight')}
-                    </th>
-
-                    {/* 13. Gr.Wt. [S] */}
-                    <th
-                      className="py-3 px-2.5 text-right border-r border-slate-200 cursor-pointer hover:bg-slate-100 min-w-[85px]"
-                      onClick={() => handleSort('silver_gross_weight')}
-                    >
-                      <span>Gr.Wt. [S]</span>
-                      {renderSortIndicator('silver_gross_weight')}
-                    </th>
-
-                    {/* 14. Action */}
-                    <th className="py-3 px-3 text-center min-w-[210px] print:hidden">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-200/80">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={14} className="py-14 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center space-y-2">
-                          <Loader2 className="w-7 h-7 text-blue-600 animate-spin" />
-                          <span className="text-xs font-semibold">Loading daily balance records...</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : items.length === 0 ? (
-                    <tr>
-                      <td colSpan={14} className="py-14 text-center text-slate-400">
-                        <div className="flex flex-col items-center justify-center space-y-2">
-                          <Package className="w-8 h-8 text-slate-300" />
-                          <p className="text-xs font-bold text-slate-700">No daily balance records found</p>
-                          <p className="text-[11px] text-slate-400">
-                            {hasActiveFilters
-                              ? 'No records match your active search or filter criteria.'
-                              : 'No entries exist in the daily_balance database.'}
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    items.map((item) => (
-                      <tr
-                        key={item.id}
-                        className="hover:bg-blue-50/30 transition-colors duration-100 group whitespace-nowrap"
-                      >
-                        {/* 1. A/c Name */}
-                        <td className="py-3 px-3.5 border-r border-slate-200 font-bold text-slate-900 uppercase">
-                          {item.account_name}
-                        </td>
-
-                        {/* 2. City */}
-                        <td className="py-3 px-2.5 border-r border-slate-200 text-slate-700 font-medium uppercase">
-                          {item.city || '—'}
-                        </td>
-
-                        {/* 3. Mobile */}
-                        <td className="py-3 px-2.5 text-center border-r border-slate-200 text-slate-700 font-mono">
-                          {item.mobile || '—'}
-                        </td>
-
-                        {/* 4. Phone */}
-                        <td className="py-3 px-2.5 text-center border-r border-slate-200 text-slate-700 font-mono">
-                          {item.phone || '—'}
-                        </td>
-
-                        {/* 5. Bal.Date */}
-                        <td className="py-3 px-2.5 text-center border-r border-slate-200 text-slate-700 font-mono text-xs">
-                          {item.balance_date || '—'}
-                        </td>
-
-                        {/* 6. Pay Date */}
-                        <td className="py-3 px-2.5 text-center border-r border-slate-200 text-slate-700 font-mono text-xs">
-                          {item.payment_date || '—'}
-                        </td>
-
-                        {/* 7. Gold Fine */}
-                        <td className={`py-3 px-2.5 text-right border-r border-slate-200 font-mono font-medium ${item.gold_fine < 0 ? 'text-red-600' : 'text-slate-900'
-                          }`}>
-                          {formatNumber(item.gold_fine, 3)}
-                        </td>
-
-                        {/* 8. Sil.Fine (Preserves Negative Balances) */}
-                        <td className={`py-3 px-2.5 text-right border-r border-slate-200 font-mono font-bold ${item.silver_fine < 0 ? 'text-red-600 font-extrabold' : 'text-slate-900'
-                          }`}>
-                          {formatNumber(item.silver_fine, 3)}
-                        </td>
-
-                        {/* 9. Amount (Preserves Negative Balances) */}
-                        <td className={`py-3 px-2.5 text-right border-r border-slate-200 font-mono font-bold ${item.amount < 0 ? 'text-red-600 font-extrabold' : 'text-emerald-800'
-                          }`}>
-                          {formatNumber(item.amount, 2)}
-                        </td>
-
-                        {/* 10. Dia.Wt. */}
-                        <td className="py-3 px-2.5 text-right border-r border-slate-200 text-slate-800 font-mono">
-                          {formatNumber(item.diamond_weight, 3)}
-                        </td>
-
-                        {/* 11. Stn.Wt. */}
-                        <td className="py-3 px-2.5 text-right border-r border-slate-200 text-slate-800 font-mono">
-                          {formatNumber(item.stone_weight, 3)}
-                        </td>
-
-                        {/* 12. Gr.Wt. [G] */}
-                        <td className="py-3 px-2.5 text-right border-r border-slate-200 text-slate-800 font-mono">
-                          {formatNumber(item.gold_gross_weight, 3)}
-                        </td>
-
-                        {/* 13. Gr.Wt. [S] */}
-                        <td className="py-3 px-2.5 text-right border-r border-slate-200 text-slate-800 font-mono">
-                          {formatNumber(item.silver_gross_weight, 3)}
-                        </td>
-
-                        {/* 14. Action: View, Edit, Delete */}
-                        <td className="py-2.5 px-3 text-center whitespace-nowrap print:hidden">
-                          <div className="flex items-center justify-center space-x-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setViewingItem(item)}
-                              className="px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                              title="View Details"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-slate-600" />
-                              <span>View</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleGoToEdit(item.id)}
-                              className="px-2.5 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                              title="Edit Record"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>Edit</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setDeletingItem(item)}
-                              className="px-2.5 py-1.5 rounded-md bg-[#ef4444] hover:bg-[#dc2626] text-white text-xs font-semibold flex items-center gap-1 shadow-2xs transition cursor-pointer"
-                              title="Delete Record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-
-                {/* 4. Grand Total / Summary Footer (Spec Section 9: Preserves Negatives) */}
-                <tfoot>
-                  <tr className="bg-[#fcf8ee] border-t border-b border-[#dfd7c2] text-xs whitespace-nowrap">
-                    {/* A/c Name */}
-                    <td className="py-2.5 px-3.5 border-r border-[#dfd7c2] font-bold text-slate-800">
-                      Grand Total
-                    </td>
-
-                    {/* City, Mobile, Phone, Bal.Date, Pay Date (empty) */}
-                    <td className="py-2.5 px-2.5 border-r border-[#dfd7c2]"></td>
-                    <td className="py-2.5 px-2.5 border-r border-[#dfd7c2]"></td>
-                    <td className="py-2.5 px-2.5 border-r border-[#dfd7c2]"></td>
-                    <td className="py-2.5 px-2.5 border-r border-[#dfd7c2]"></td>
-                    <td className="py-2.5 px-2.5 border-r border-[#dfd7c2]"></td>
-
-                    {/* Total Gold Fine */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className="bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs sm:text-sm text-right shadow-2xs min-w-[75px] inline-block">
-                        {formatNumber(totals.total_gold_fine, 3)}
-                      </div>
-                    </td>
-
-                    {/* Total Silver Fine (Negative preserved) */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className={`bg-white border border-slate-300 rounded px-2 py-1 font-bold text-xs sm:text-sm text-right shadow-2xs min-w-[85px] inline-block ${totals.total_silver_fine < 0 ? 'text-red-600' : 'text-slate-900'
-                        }`}>
-                        {formatNumber(totals.total_silver_fine, 3)}
-                      </div>
-                    </td>
-
-                    {/* Total Amount (Negative preserved) */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className={`bg-white border border-slate-300 rounded px-2 py-1 font-bold text-xs sm:text-sm text-right shadow-2xs min-w-[95px] inline-block ${totals.total_amount < 0 ? 'text-red-600' : 'text-emerald-800'
-                        }`}>
-                        {formatNumber(totals.total_amount, 2)}
-                      </div>
-                    </td>
-
-                    {/* Total Dia.Wt. */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className="bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs sm:text-sm text-right shadow-2xs min-w-[70px] inline-block">
-                        {formatNumber(totals.total_diamond_weight, 3)}
-                      </div>
-                    </td>
-
-                    {/* Total Stn.Wt. */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className="bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs sm:text-sm text-right shadow-2xs min-w-[70px] inline-block">
-                        {formatNumber(totals.total_stone_weight, 3)}
-                      </div>
-                    </td>
-
-                    {/* Total Gr.Wt. [G] */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className="bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs sm:text-sm text-right shadow-2xs min-w-[75px] inline-block">
-                        {formatNumber(totals.total_gold_gross_weight, 3)}
-                      </div>
-                    </td>
-
-                    {/* Total Gr.Wt. [S] */}
-                    <td className="py-2.5 px-1 text-right border-r border-[#dfd7c2]">
-                      <div className="bg-white border border-slate-300 rounded px-2 py-1 font-bold text-slate-900 text-xs sm:text-sm text-right shadow-2xs min-w-[75px] inline-block">
-                        {formatNumber(totals.total_silver_gross_weight, 3)}
-                      </div>
-                    </td>
-
-                    {/* Action */}
-                    <td className="py-2.5 px-3 border-r border-[#dfd7c2] print:hidden"></td>
-                  </tr>
-                </tfoot>
-              </table>
+              {/* With Last S/P/Hisab Date */}
+              <label className="flex items-center gap-1.5 cursor-pointer select-none text-slate-700 dark:text-slate-300 hover:text-amber-600 dark:hover:text-amber-400">
+                <input
+                  type="checkbox"
+                  checked={withLastSpDate}
+                  onChange={(e) => {
+                    setWithLastSpDate(e.target.checked);
+                    setIsAllRecords(false);
+                    setCurrentPage(1);
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 accent-amber-500 cursor-pointer"
+                />
+                <span className="font-medium">With Last S/P/Hisab</span>
+              </label>
             </div>
           </div>
 
-          {/* 5. Pagination Section */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 text-xs sm:text-sm text-slate-600 print:hidden">
-            <div>
-              <span>
-                Showing <strong className="text-slate-900 font-semibold">{startRecord}–{endRecord}</strong> of{' '}
-                <strong className="text-slate-900 font-semibold">{totalRecords}</strong> records
-              </span>
-            </div>
+          {/* ROW 4: Action Toolbar (All 8 Buttons from Screenshot 1) */}
+          <div className="pt-2 border-t border-slate-100 dark:border-white/[0.04]">
+            <div className="flex items-center flex-wrap gap-2">
+              {/* 1. Group Wise */}
+              <button
+                type="button"
+                onClick={() => setGroupWiseView((v) => !v)}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  groupWiseView
+                    ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-xs'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
+                }`}
+                title="Toggle Group Wise View"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Group Wise</span>
+              </button>
 
-            <div className="flex items-center space-x-1.5">
+              {/* 2. OutStanding */}
+              <button
+                type="button"
+                onClick={() => {
+                  setOutstandingOnly((v) => !v);
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  outstandingOnly
+                    ? 'border-emerald-500 bg-emerald-500 text-white shadow-xs'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-emerald-400'
+                }`}
+                title="Filter positive outstanding balances"
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                <span>OutStanding</span>
+              </button>
+
+              {/* 3. Converter */}
+              <button
+                type="button"
+                onClick={() => setShowConverterModal(true)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] hover:border-amber-400 text-slate-700 dark:text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Open fine weight & currency converter"
+              >
+                <Calculator className="w-3.5 h-3.5 text-amber-500" />
+                <span>Converter</span>
+              </button>
+
+              {/* 4. Pay/SP Date */}
+              <button
+                type="button"
+                onClick={() => setShowPayDateModal(true)}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  payFromDate || payToDate
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
+                }`}
+                title="Payment / Settlement date filter"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Pay/SP Date {payFromDate || payToDate ? '•' : ''}</span>
+              </button>
+
+              {/* 5. Agent/HP */}
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentHpOnly((v) => !v);
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  agentHpOnly
+                    ? 'border-purple-500 bg-purple-500 text-white shadow-xs'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-purple-400'
+                }`}
+                title="Filter Agent / High Priority accounts"
+              >
+                <Bookmark className="w-3.5 h-3.5 text-purple-500" />
+                <span>Agent/HP</span>
+              </button>
+
+              {/* 6. Call Log */}
+              <button
+                type="button"
+                onClick={() => setShowCallLogModal(true)}
+                className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] hover:border-amber-400 text-slate-700 dark:text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                title="Customer follow-up call logs"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-blue-500" />
+                <span>Call Log</span>
+              </button>
+
+              {/* 7. Bal Date */}
+              <button
+                type="button"
+                onClick={() => setShowBalDateModal(true)}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  balanceDate
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
+                }`}
+                title="Pick single balance date"
+              >
+                <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                <span>Bal Date {balanceDate ? `(${balanceDate})` : ''}</span>
+              </button>
+
+              {/* 8. Amount Filter */}
+              <button
+                type="button"
+                onClick={() => setShowAmountFilterModal(true)}
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
+                  minAmount || maxAmount
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                    : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
+                }`}
+                title="Min / Max amount range filter"
+              >
+                <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Amount Filter {minAmount || maxAmount ? '•' : ''}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* DATA TABLE CONTAINER */}
+        <div className="bg-white dark:bg-[#0e121b] rounded-2xl border border-slate-200 dark:border-white/[0.08] shadow-xs overflow-hidden">
+          {/* Table Header Info Row */}
+          <div className="px-5 py-3 border-b border-slate-200 dark:border-white/[0.08] flex items-center justify-between text-xs">
+            <div className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <span>Showing records {totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalRecords)} of {totalRecords}</span>
+              {groupWiseView && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold text-[10px]">
+                  Group-Wise Active
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-500">Show:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1 rounded-lg border border-slate-300 dark:border-white/[0.1] bg-slate-50 dark:bg-[#141824] text-xs font-semibold focus:outline-none"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table Scroll Area */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-50 dark:bg-[#121622] text-slate-600 dark:text-slate-400 font-semibold">
+                  <th className="py-2.5 px-3">A/c Name</th>
+                  <th className="py-2.5 px-3">City</th>
+                  <th className="py-2.5 px-3">Group</th>
+                  <th className="py-2.5 px-3">Mobile / Phone</th>
+                  <th className="py-2.5 px-3">Bal. Date</th>
+                  <th className="py-2.5 px-3">Pay Date</th>
+                  <th className="py-2.5 px-3 text-right">Gold Fine</th>
+                  <th className="py-2.5 px-3 text-right">Sil. Fine</th>
+                  <th className="py-2.5 px-3 text-right">Amount (₹)</th>
+                  <th className="py-2.5 px-3 text-right">Dia. Wt.</th>
+                  <th className="py-2.5 px-3 text-right">Stn. Wt.</th>
+                  <th className="py-2.5 px-3 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+                {loading ? (
+                  <tr>
+                    <td colSpan={12} className="py-12 text-center text-slate-400">
+                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-500" />
+                      <span>Loading Daily Balance records...</span>
+                    </td>
+                  </tr>
+                ) : items.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="py-12 text-center text-slate-400">
+                      No matching records found. Try adjusting or clearing your filters.
+                    </td>
+                  </tr>
+                ) : groupWiseView && groupedItems ? (
+                  /* GROUP-WISE ACCORDION VIEW */
+                  groupedItems.map((grp) => (
+                    <React.Fragment key={grp.group}>
+                      <tr className="bg-amber-500/10 dark:bg-amber-500/5 font-bold text-amber-700 dark:text-amber-300">
+                        <td colSpan={6} className="py-2 px-3">
+                          📁 Group: {grp.group} ({grp.records.length} accounts)
+                        </td>
+                        <td className="py-2 px-3 text-right font-mono">{formatNum(grp.subTotalGold, 3)}</td>
+                        <td className="py-2 px-3 text-right font-mono">{formatNum(grp.subTotalSilver, 3)}</td>
+                        <td className="py-2 px-3 text-right font-mono font-bold">₹{formatNum(grp.subTotalAmount, 2)}</td>
+                        <td colSpan={3}></td>
+                      </tr>
+                      {grp.records.map((r) => (
+                        <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                          <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200 pl-6">
+                            {r.account_name}
+                          </td>
+                          <td className="py-2 px-3">{r.city || '—'}</td>
+                          <td className="py-2 px-3">{grp.group}</td>
+                          <td className="py-2 px-3 font-mono">{r.mobile || r.phone || '—'}</td>
+                          <td className="py-2 px-3">{r.balance_date || '—'}</td>
+                          <td className="py-2 px-3">{r.payment_date || '—'}</td>
+                          <td className="py-2 px-3 text-right font-mono">{formatNum(r.gold_fine, 3)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{formatNum(r.silver_fine, 3)}</td>
+                          <td className="py-2 px-3 text-right font-mono font-semibold">₹{formatNum(r.amount, 2)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{formatNum(r.diamond_weight, 3)}</td>
+                          <td className="py-2 px-3 text-right font-mono">{formatNum(r.stone_weight, 3)}</td>
+                          <td className="py-2 px-3 text-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={() => setViewingItem(r)}
+                              className="p-1 text-slate-400 hover:text-amber-500"
+                              title="View Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            {onNavigateEdit && (
+                              <button
+                                type="button"
+                                onClick={() => onNavigateEdit(r.id)}
+                                className="p-1 text-slate-400 hover:text-blue-500"
+                                title="Edit Record"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))
+                ) : (
+                  /* STANDARD FLAT LIST */
+                  items.map((r) => (
+                    <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition">
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-slate-100">
+                        {r.account_name}
+                      </td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{r.city || '—'}</td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{(r as any).group_name || 'General'}</td>
+                      <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400">{r.mobile || r.phone || '—'}</td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{r.balance_date || '—'}</td>
+                      <td className="py-2 px-3 text-slate-600 dark:text-slate-400">{r.payment_date || '—'}</td>
+                      <td className="py-2 px-3 text-right font-mono">{formatNum(r.gold_fine, 3)}</td>
+                      <td className={`py-2 px-3 text-right font-mono ${r.silver_fine < 0 ? 'text-rose-500' : ''}`}>
+                        {formatNum(r.silver_fine, 3)}
+                      </td>
+                      <td className={`py-2 px-3 text-right font-mono font-semibold ${r.amount < 0 ? 'text-rose-500' : 'text-slate-900 dark:text-slate-100'}`}>
+                        ₹{formatNum(r.amount, 2)}
+                      </td>
+                      <td className="py-2 px-3 text-right font-mono">{formatNum(r.diamond_weight, 3)}</td>
+                      <td className="py-2 px-3 text-right font-mono">{formatNum(r.stone_weight, 3)}</td>
+                      <td className="py-2 px-3 text-center space-x-1">
+                        <button
+                          type="button"
+                          onClick={() => setViewingItem(r)}
+                          className="p-1 rounded text-slate-400 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-white/5 transition"
+                          title="View Details"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        {onNavigateEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onNavigateEdit(r.id)}
+                            className="p-1 rounded text-slate-400 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-white/5 transition"
+                            title="Edit Record"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setDeletingItem(r)}
+                          className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-white/5 transition"
+                          title="Delete Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+
+              {/* GRAND TOTALS FOOTER */}
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 dark:border-white/[0.1] bg-amber-500/10 dark:bg-amber-500/5 font-bold text-slate-900 dark:text-white">
+                  <td colSpan={6} className="py-3 px-3 uppercase tracking-wider text-xs">
+                    Grand Totals (Across {totalRecords} records)
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">{formatNum(totals.total_gold_fine, 3)}</td>
+                  <td className="py-3 px-3 text-right font-mono">{formatNum(totals.total_silver_fine, 3)}</td>
+                  <td className="py-3 px-3 text-right font-mono font-bold text-amber-600 dark:text-amber-400">
+                    ₹{formatNum(totals.total_amount, 2)}
+                  </td>
+                  <td className="py-3 px-3 text-right font-mono">{formatNum(totals.total_diamond_weight, 3)}</td>
+                  <td className="py-3 px-3 text-right font-mono">{formatNum(totals.total_stone_weight, 3)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* ROW 5: Pagination Controls */}
+          <div className="px-5 py-3 border-t border-slate-200 dark:border-white/[0.08] flex items-center justify-between text-xs">
+            <span className="text-slate-500 dark:text-slate-400">
+              Page {currentPage} of {totalPages}
+            </span>
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage <= 1}
-                className="w-8 h-8 rounded-lg border border-slate-300 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                disabled={currentPage <= 1 || loading}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 transition"
               >
-                <ChevronLeft className="w-4 h-4 text-slate-600" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
-
-              {getPageNumbers().map((p, idx) =>
-                typeof p === 'number' ? (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setCurrentPage(p)}
-                    className={`w-8 h-8 rounded-lg text-xs font-semibold transition ${currentPage === p
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'border border-slate-300 text-slate-700 hover:bg-slate-100'
-                      }`}
-                  >
-                    {p}
-                  </button>
-                ) : (
-                  <span key={idx} className="px-1 text-slate-400">
-                    ...
-                  </span>
-                )
-              )}
-
+              <span className="px-2 font-semibold">{currentPage}</span>
               <button
                 type="button"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage >= totalPages}
-                className="w-8 h-8 rounded-lg border border-slate-300 flex items-center justify-center hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                disabled={currentPage >= totalPages || loading}
+                className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.1] hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-40 transition"
               >
-                <ChevronRight className="w-4 h-4 text-slate-600" />
+                <ChevronRight className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* View Detail Modal */}
-      {viewingItem && (
-        <DailyBalanceViewModal item={viewingItem} onClose={() => setViewingItem(null)} />
-      )}
+      {/* MODAL 1: Converter Modal */}
+      {showConverterModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.08]">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Calculator className="w-4 h-4 text-amber-500" />
+                <span>Fine Metal &amp; Rate Converter</span>
+              </h3>
+              <button onClick={() => setShowConverterModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-      {/* Delete Confirmation Modal */}
-      {deletingItem && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in-50 zoom-in-95 duration-150">
-            <div className="flex items-start space-x-3.5">
-              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                <Trash2 className="w-5 h-5" />
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-500 mb-1">Metal</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConverterMetal('SILVER');
+                      setConverterPurity('92.5');
+                      setConverterRate('95');
+                    }}
+                    className={`py-1.5 rounded-xl font-bold border transition ${
+                      converterMetal === 'SILVER'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-500'
+                        : 'border-slate-200 dark:border-white/[0.1]'
+                    }`}
+                  >
+                    Silver
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConverterMetal('GOLD');
+                      setConverterPurity('91.6');
+                      setConverterRate('7800');
+                    }}
+                    className={`py-1.5 rounded-xl font-bold border transition ${
+                      converterMetal === 'GOLD'
+                        ? 'border-amber-500 bg-amber-500/10 text-amber-500'
+                        : 'border-slate-200 dark:border-white/[0.1]'
+                    }`}
+                  >
+                    Gold
+                  </button>
+                </div>
               </div>
-              <div className="flex-1">
-                <h3 className="text-base font-bold text-slate-900">Delete Daily Balance Record</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Are you sure you want to delete the daily balance entry for{' '}
-                  <strong className="text-slate-800">"{deletingItem.account_name}"</strong> (ID: #{deletingItem.id})? This will permanently remove it from the <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">daily_balance</code> table.
-                </p>
+
+              <div>
+                <label className="block text-slate-500 mb-1">Gross Weight (Grams)</label>
+                <input
+                  type="number"
+                  value={converterWeight}
+                  onChange={(e) => setConverterWeight(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] font-mono text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-500 mb-1">Purity (%)</label>
+                  <input
+                    type="number"
+                    value={converterPurity}
+                    onChange={(e) => setConverterPurity(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-500 mb-1">Rate (₹/gm)</label>
+                  <input
+                    type="number"
+                    value={converterRate}
+                    onChange={(e) => setConverterRate(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Calculated Outputs */}
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Fine Weight:</span>
+                  <span className="font-bold font-mono">
+                    {((parseFloat(converterWeight || '0') * parseFloat(converterPurity || '0')) / 100).toFixed(3)} gm
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Calculated Value:</span>
+                  <span className="font-bold font-mono text-amber-600 dark:text-amber-400">
+                    ₹{(
+                      ((parseFloat(converterWeight || '0') * parseFloat(converterPurity || '0')) / 100) *
+                      parseFloat(converterRate || '0')
+                    ).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end space-x-2.5">
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConverterModal(false)}
+                className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
+              >
+                Close Converter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Pay/SP Date Modal */}
+      {showPayDateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.08]">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-500" />
+                <span>Payment / SP Date Range</span>
+              </h3>
+              <button onClick={() => setShowPayDateModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-500 mb-1">Payment Date From</label>
+                <input
+                  type="date"
+                  value={payFromDate}
+                  onChange={(e) => setPayFromDate(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1">Payment Date To</label>
+                <input
+                  type="date"
+                  value={payToDate}
+                  onChange={(e) => setPayToDate(e.target.value)}
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPayFromDate('');
+                  setPayToDate('');
+                  setShowPayDateModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPayDateModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
+              >
+                Apply Range
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Call Log Modal */}
+      {showCallLogModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.08]">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <PhoneCall className="w-4 h-4 text-blue-500" />
+                <span>Customer Communication &amp; Call Logs</span>
+              </h3>
+              <button onClick={() => setShowCallLogModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Existing Logs List */}
+            <div className="space-y-2 max-h-48 overflow-y-auto text-xs">
+              {callLogsList.map((log) => (
+                <div key={log.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#181d28] border border-slate-200 dark:border-white/[0.06]">
+                  <div className="flex justify-between items-center mb-1 font-semibold">
+                    <span>{log.party}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{log.time}</span>
+                  </div>
+                  <p className="text-slate-600 dark:text-slate-400">{log.notes}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Add New Log */}
+            <div className="space-y-2 text-xs pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+              <label className="font-semibold block">Add Interaction Note</label>
+              <input
+                type="text"
+                value={callLogParty}
+                onChange={(e) => setCallLogParty(e.target.value)}
+                placeholder="Party / Customer Name"
+                className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28]"
+              />
+              <textarea
+                value={callLogNotes}
+                onChange={(e) => setCallLogNotes(e.target.value)}
+                placeholder="Call notes, follow-up remarks..."
+                rows={2}
+                className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28]"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (callLogParty && callLogNotes) {
+                    setCallLogsList((prev) => [
+                      {
+                        id: Date.now(),
+                        party: callLogParty,
+                        notes: callLogNotes,
+                        time: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                      },
+                      ...prev,
+                    ]);
+                    setCallLogParty('');
+                    setCallLogNotes('');
+                    showToast('Call note logged successfully.');
+                  }
+                }}
+                className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
+              >
+                Save Call Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: Bal Date Modal */}
+      {showBalDateModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-xs w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.08]">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-amber-500" />
+                <span>Filter by Balance Date</span>
+              </h3>
+              <button onClick={() => setShowBalDateModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <input
+                type="date"
+                value={balanceDate}
+                onChange={(e) => setBalanceDate(e.target.value)}
+                className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] text-xs font-semibold"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBalanceDate('');
+                  setShowBalDateModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-1.5 rounded-xl border text-xs"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowBalDateModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-bold text-xs"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: Amount Filter Modal */}
+      {showAmountFilterModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-white/[0.08]">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-500" />
+                <span>Amount Range Filter</span>
+              </h3>
+              <button onClick={() => setShowAmountFilterModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-500 mb-1">Minimum Amount (₹)</label>
+                <input
+                  type="number"
+                  value={minAmount}
+                  onChange={(e) => setMinAmount(e.target.value)}
+                  placeholder="e.g. 5000"
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] font-mono text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-slate-500 mb-1">Maximum Amount (₹)</label>
+                <input
+                  type="number"
+                  value={maxAmount}
+                  onChange={(e) => setMaxAmount(e.target.value)}
+                  placeholder="e.g. 500000"
+                  className="w-full p-2 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#181d28] font-mono text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMinAmount('');
+                  setMaxAmount('');
+                  setShowAmountFilterModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-2 rounded-xl border text-xs"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAmountFilterModal(false);
+                  setCurrentPage(1);
+                }}
+                className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
+              >
+                Apply Range
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Item Modal */}
+      {viewingItem && (
+        <DailyBalanceViewModal
+          record={viewingItem}
+          onClose={() => setViewingItem(null)}
+          onEdit={onNavigateEdit ? () => onNavigateEdit(viewingItem.id) : undefined}
+        />
+      )}
+
+      {/* Delete Item Confirmation Modal */}
+      {deletingItem && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+              Delete Daily Balance Record?
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Are you sure you want to delete the daily balance entry for{' '}
+              <strong className="text-slate-800 dark:text-slate-200">{deletingItem.account_name}</strong>?
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setDeletingItem(null)}
-                disabled={isDeleting}
-                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={confirmDelete}
                 disabled={isDeleting}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shadow-xs transition flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+                onClick={async () => {
+                  try {
+                    setIsDeleting(true);
+                    await deleteDailyBalance(deletingItem.id);
+                    showToast('Record deleted successfully.');
+                    setDeletingItem(null);
+                    loadData();
+                  } catch (err: any) {
+                    showToast(err.message || 'Failed to delete record.', 'error');
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs"
               >
-                {isDeleting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Deleting...</span>
-                  </>
-                ) : (
-                  <span>Delete Record</span>
-                )}
+                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
               </button>
             </div>
           </div>
@@ -1292,4 +1817,3 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
     </div>
   );
 };
-export default DailyBalanceListPage;

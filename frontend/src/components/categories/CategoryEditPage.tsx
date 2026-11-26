@@ -16,7 +16,7 @@ import {
   fetchCategoryByIdApi,
   updateCategoryApi,
   checkCategoryNameDuplicateApi,
-  fetchCategoryMetalTypesApi,
+  fetchMetalStockFilterOptions,
 } from '../../services/api';
 import { showSuccessAlert, showErrorAlert, showValidationAlert } from '../../utils/alert';
 
@@ -28,10 +28,10 @@ interface CategoryEditPageProps {
 export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, onBackToList }) => {
   const navigate = useNavigate();
 
-  const [metalTypes, setMetalTypes] = useState<string[]>(['GOLD', 'SILVER', 'PLATINUM', 'DIAMOND']);
+  const [metalItems, setMetalItems] = useState<string[]>([]);
   const [originalName, setOriginalName] = useState<string>('');
   const [formData, setFormData] = useState({
-    metal_type: 'SILVER',
+    metal_type: '',
     name: '',
     hsn_code: '7113',
   });
@@ -53,13 +53,14 @@ export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, on
     setIsLoading(true);
     setApiError(null);
 
-    Promise.all([fetchCategoryByIdApi(recordId), fetchCategoryMetalTypesApi()])
-      .then(([cat, types]) => {
+    Promise.all([fetchCategoryByIdApi(recordId), fetchMetalStockFilterOptions()])
+      .then(([cat, opts]) => {
         if (!isMounted) return;
-        setMetalTypes(types);
+        const items = opts.items || [];
+        setMetalItems(items);
         setOriginalName(cat.name || '');
         setFormData({
-          metal_type: cat.metal_type || 'SILVER',
+          metal_type: cat.metal_type || (items[0] || ''),
           name: cat.name || '',
           hsn_code: cat.hsn_code || '7113',
         });
@@ -123,23 +124,33 @@ export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, on
     const errors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
-      errors.name = 'Category Name is required.';
+      errors.name = 'This field is required.';
     } else if (nameStatus.available === false) {
       errors.name = nameStatus.message || 'Category Name is already taken.';
     }
 
     if (!formData.metal_type.trim()) {
-      errors.metal_type = 'Metal Type is required.';
+      errors.metal_type = 'This field is required.';
     }
 
     setFormErrors(errors);
+    const firstInvalid = Object.keys(errors)[0];
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
+                    document.querySelector('.border-red-500, .border-red-400')) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) {
-      showValidationAlert('Please fill in all required fields and resolve errors.', 'Validation Warning');
       return;
     }
 
@@ -264,9 +275,9 @@ export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, on
               onChange={(e) => setFormData({ ...formData, metal_type: e.target.value })}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-blue-500 cursor-pointer"
             >
-              {metalTypes.map((mt) => (
-                <option key={mt} value={mt}>
-                  {mt}
+              {metalItems.map((it) => (
+                <option key={it} value={it}>
+                  {it}
                 </option>
               ))}
             </select>
@@ -296,6 +307,7 @@ export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, on
             <div className="relative">
               <input
                 type="text"
+                name="name"
                 value={formData.name}
                 onChange={(e) => {
                   setFormData({ ...formData, name: e.target.value });
@@ -307,7 +319,13 @@ export const CategoryEditPage: React.FC<CategoryEditPageProps> = ({ recordId, on
                     });
                   }
                 }}
-                onBlur={(e) => handleCheckName(e.target.value)}
+                onBlur={(e) => {
+                  if (!e.target.value.trim()) {
+                    setFormErrors((prev) => ({ ...prev, name: 'This field is required.' }));
+                  } else {
+                    handleCheckName(e.target.value);
+                  }
+                }}
                 placeholder="e.g. Gold Bangles & Kadas"
                 maxLength={80}
                 className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold text-slate-900 focus:outline-hidden focus:ring-2 ${

@@ -1,0 +1,10 @@
+export { KarigarModulePage } from './KarigarModulePage';
+export { KarigarListPage } from './KarigarListPage';
+export { KarigarAddPage } from './KarigarAddPage';
+export { KarigarEditPage } from './KarigarEditPage';
+export { KarigarIssueListPage } from './KarigarIssueListPage';
+export { KarigarIssueAddPage } from './KarigarIssueAddPage';
+export { KarigarIssueEditPage } from './KarigarIssueEditPage';
+export { KarigarReceiveListPage } from './KarigarReceiveListPage';
+export { KarigarReceiveAddPage } from './KarigarReceiveAddPage';
+export { KarigarReportsPage } from './KarigarReportsPage';

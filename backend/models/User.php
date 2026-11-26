@@ -19,8 +19,8 @@ class User {
 
     public static function findByEmail(string $email): ?array {
         $db = Database::getConnection();
-        $stmt = $db->prepare('SELECT * FROM users WHERE email = :email LIMIT 1');
-        $stmt->execute(['email' => $email]);
+        $stmt = $db->prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1');
+        $stmt->execute(['email' => trim($email)]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) {
             $row['id'] = (int)$row['id'];
@@ -46,7 +46,7 @@ class User {
         return (int)$stmt->fetchColumn();
     }
 
-    public static function create(string $name, string $mobile, string $hashedPassword, string $role = 'STAFF', ?string $email = null): array {
+    public static function create(string $name, ?string $mobile, string $hashedPassword, string $role = 'STAFF', ?string $email = null): array {
         $db = Database::getConnection();
         $stmt = $db->prepare('
             INSERT INTO users (name, mobile, email, hashed_password, role, is_active, created_at)
@@ -54,13 +54,19 @@ class User {
         ');
         $stmt->execute([
             'name'            => $name,
-            'mobile'          => $mobile,
-            'email'           => $email,
+            'mobile'          => $mobile ?: null,
+            'email'           => $email ? strtolower(trim($email)) : null,
             'hashed_password' => $hashedPassword,
             'role'            => $role,
         ]);
         $id = (int)$db->lastInsertId();
         return self::findById($id);
+    }
+
+    public static function updatePassword(int $userId, string $hashedPassword): bool {
+        $db = Database::getConnection();
+        $stmt = $db->prepare('UPDATE users SET hashed_password = :hp WHERE id = :id');
+        return $stmt->execute([':hp' => $hashedPassword, ':id' => $userId]);
     }
 
     public static function update(int $id, array $data): ?array {
@@ -75,6 +81,10 @@ class User {
         if (isset($data['mobile'])) {
             $fields[] = 'mobile = :mobile';
             $params['mobile'] = $data['mobile'];
+        }
+        if (isset($data['email'])) {
+            $fields[] = 'email = :email';
+            $params['email'] = $data['email'] ? strtolower(trim($data['email'])) : null;
         }
         if (isset($data['role'])) {
             $fields[] = 'role = :role';
@@ -122,9 +132,10 @@ class User {
         $params = [];
 
         if ($search !== null && trim($search) !== '') {
-            $where[] = '(name LIKE :search1 OR mobile LIKE :search2)';
+            $where[] = '(name LIKE :search1 OR mobile LIKE :search2 OR email LIKE :search3)';
             $params['search1'] = '%' . trim($search) . '%';
             $params['search2'] = '%' . trim($search) . '%';
+            $params['search3'] = '%' . trim($search) . '%';
         }
         if ($role !== null && $role !== '' && $role !== 'ALL') {
             $where[] = 'role = :role';
@@ -145,7 +156,7 @@ class User {
 
         // Data
         $offset = ($page - 1) * $perPage;
-        $dataSql = "SELECT id, name, mobile, role, is_active, created_at FROM users {$whereSql} ORDER BY id DESC LIMIT :limit OFFSET :offset";
+        $dataSql = "SELECT id, name, mobile, email, role, is_active, created_at FROM users {$whereSql} ORDER BY id DESC LIMIT :limit OFFSET :offset";
         $dataStmt = $db->prepare($dataSql);
         foreach ($params as $k => $v) {
             $dataStmt->bindValue($k, $v);

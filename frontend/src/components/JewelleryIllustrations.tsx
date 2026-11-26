@@ -185,7 +185,7 @@ export const HeroSilverPayalIllustration: React.FC<{ className?: string }> = ({ 
         <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#94a3b8" floodOpacity="0.3" />
       </filter>
     </defs>
-    
+
     <g filter="url(#heroShadow)">
       {/* Upper Band: 3 layers */}
       <path

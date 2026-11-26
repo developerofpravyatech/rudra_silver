@@ -181,12 +181,9 @@ class Category {
         $db = Database::getConnection();
 
         // 1. Metal Type validation
-        $metalType = strtoupper(trim($data['metal_type'] ?? ''));
+        $metalType = trim($data['metal_type'] ?? '');
         if ($metalType === '') {
             throw new Exception('Metal Type is required.');
-        }
-        if (!in_array($metalType, self::METAL_TYPES, true)) {
-            throw new Exception("Invalid Metal Type '{$metalType}'. Allowed values: " . implode(', ', self::METAL_TYPES));
         }
 
         // 2. Category Name validation
@@ -237,12 +234,9 @@ class Category {
 
         // 1. Metal Type update
         if (isset($data['metal_type'])) {
-            $metalType = strtoupper(trim($data['metal_type']));
+            $metalType = trim($data['metal_type']);
             if ($metalType === '') {
                 throw new Exception('Metal Type cannot be empty.');
-            }
-            if (!in_array($metalType, self::METAL_TYPES, true)) {
-                throw new Exception("Invalid Metal Type '{$metalType}'. Allowed values: " . implode(', ', self::METAL_TYPES));
             }
             $updates[] = 'metal_type = :metal_type';
             $params['metal_type'] = $metalType;

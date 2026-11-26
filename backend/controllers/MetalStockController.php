@@ -111,11 +111,6 @@ class MetalStockController {
                     $errors[$field] = ucfirst(str_replace('_', ' ', $field)) . ' must be a valid number.';
                     continue;
                 }
-                $num = (float)$val;
-                if ($num < 0) {
-                    $errors[$field] = ucfirst(str_replace('_', ' ', $field)) . ' cannot be negative.';
-                    continue;
-                }
                 if (str_contains($val, '.')) {
                     $decimalPart = substr($val, strpos($val, '.') + 1);
                     if (strlen($decimalPart) > 3) {
@@ -225,7 +220,8 @@ class MetalStockController {
      */
     public static function stockTypes(): void {
         try {
-            $types = StockType::all();
+            $includeInactive = !isset($_GET['active_only']) || $_GET['active_only'] !== '1';
+            $types = StockType::all($includeInactive);
             Response::json($types);
         } catch (Exception $e) {
             Response::error($e->getMessage(), 500);

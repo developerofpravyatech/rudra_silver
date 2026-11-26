@@ -70,17 +70,13 @@ class StockStatusController {
                 Response::error('Item Name is required.', 422);
             }
 
-            // Validate numeric fields: valid numbers, non-negative, max 3 decimal places
+            // Validate numeric fields: valid numbers, max 3 decimal places (allow negative, zero, decimal)
             $numericFields = ['pc', 'gross_weight', 'net_weight', 'tunch', 'wastage', 'labour_weight', 'rate', 'silver_fine', 'total', 'gold_fine'];
             foreach ($numericFields as $field) {
                 if (array_key_exists($field, $body) && $body[$field] !== null && $body[$field] !== '') {
                     $val = trim($body[$field]);
                     if (!is_numeric($val)) {
                         Response::error("$field must be a valid number.", 422);
-                    }
-                    $num = (float)$val;
-                    if ($num < 0) {
-                        Response::error("$field must be non-negative.", 422);
                     }
                     // Validate decimal precision (max 3 decimal places)
                     if (strpos($val, '.') !== false) {
@@ -138,7 +134,7 @@ class StockStatusController {
                 Response::error('Item Name cannot be empty.', 422);
             }
 
-            // Validate numeric fields: valid numbers, non-negative, max 3 decimal places
+            // Validate numeric fields: valid numbers, max 3 decimal places (allow negative, zero, decimal)
             if (isset($body['pc']) || isset($body['gross_weight']) || isset($body['net_weight']) || isset($body['tunch']) || isset($body['wastage']) || isset($body['labour_weight']) || isset($body['rate']) || isset($body['silver_fine']) || isset($body['total']) || isset($body['gold_fine'])) {
                 $numericFields = ['pc', 'gross_weight', 'net_weight', 'tunch', 'wastage', 'labour_weight', 'rate', 'silver_fine', 'total', 'gold_fine'];
                 foreach ($numericFields as $field) {
@@ -146,10 +142,6 @@ class StockStatusController {
                         $val = trim($body[$field]);
                         if (!is_numeric($val)) {
                             Response::error("$field must be a valid number.", 422);
-                        }
-                        $num = (float)$val;
-                        if ($num < 0) {
-                            Response::error("$field must be non-negative.", 422);
                         }
                         // Validate decimal precision (max 3 decimal places)
                         if (strpos($val, '.') !== false) {

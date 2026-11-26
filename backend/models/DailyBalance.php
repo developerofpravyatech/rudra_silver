@@ -34,14 +34,16 @@ class DailyBalance {
         $where = ['1=1'];
         $params = [];
 
-        // Search: Account Name, City, Mobile, Phone
+        // Search: Account Name, City, Mobile, Phone, Firm, Location
         if (!empty($filters['search'])) {
-            $where[] = '(db.account_name LIKE :s_acc OR db.city LIKE :s_city OR db.mobile LIKE :s_mob OR db.phone LIKE :s_ph)';
+            $where[] = '(db.account_name LIKE :s_acc OR db.city LIKE :s_city OR db.mobile LIKE :s_mob OR db.phone LIKE :s_ph OR cust.FirmName LIKE :s_firm OR cust.Location LIKE :s_loc)';
             $searchVal = '%' . trim($filters['search']) . '%';
             $params['s_acc'] = $searchVal;
             $params['s_city'] = $searchVal;
             $params['s_mob'] = $searchVal;
             $params['s_ph'] = $searchVal;
+            $params['s_firm'] = $searchVal;
+            $params['s_loc'] = $searchVal;
         }
 
         // Account Name filter
@@ -50,46 +52,129 @@ class DailyBalance {
             $params['f_acc_name'] = '%' . trim($filters['account_name']) . '%';
         }
 
-        // City / Location filter
-        if (!empty($filters['city']) && $filters['city'] !== 'all' && $filters['city'] !== 'All') {
-            $where[] = 'db.city = :f_city';
+        // City filter
+        if (!empty($filters['city']) && $filters['city'] !== 'all' && $filters['city'] !== 'ALL' && $filters['city'] !== 'ALL CITY') {
+            $where[] = '(db.city = :f_city OR acc.city = :f_city OR cust.City = :f_city)';
             $params['f_city'] = trim($filters['city']);
         }
 
-        // Date From
-        if (!empty($filters['from_date'])) {
-            $where[] = 'db.balance_date >= :f_from_date';
-            $params['f_from_date'] = $filters['from_date'];
-        }
-
-        // Date To
-        if (!empty($filters['to_date'])) {
-            $where[] = 'db.balance_date <= :f_to_date';
-            $params['f_to_date'] = $filters['to_date'];
-        }
-
-        // State filter (via joined accounts)
-        if (!empty($filters['state']) && $filters['state'] !== 'all') {
-            $where[] = 'acc.state = :f_state';
+        // State filter (via joined accounts / customer)
+        if (!empty($filters['state']) && $filters['state'] !== 'all' && $filters['state'] !== 'ALL' && $filters['state'] !== 'ALL STATE') {
+            $where[] = '(acc.state = :f_state OR cust.Country = :f_state)';
             $params['f_state'] = trim($filters['state']);
         }
 
+        // Location filter (via customer)
+        if (!empty($filters['location']) && $filters['location'] !== 'all' && $filters['location'] !== 'ALL') {
+            $where[] = 'cust.Location = :f_location';
+            $params['f_location'] = trim($filters['location']);
+        }
+
+        // Ref By filter (via customer)
+        if (!empty($filters['ref_by']) && $filters['ref_by'] !== 'all' && $filters['ref_by'] !== 'ALL') {
+            $where[] = 'cust.RefBy = :f_ref_by';
+            $params['f_ref_by'] = trim($filters['ref_by']);
+        }
+
+        // Occupation filter (via customer)
+        if (!empty($filters['occupation']) && $filters['occupation'] !== 'all' && $filters['occupation'] !== 'ALL') {
+            $where[] = 'cust.Occupation = :f_occupation';
+            $params['f_occupation'] = trim($filters['occupation']);
+        }
+
+        // Type filter (Normal, Customer, Supplier, etc.)
+        if (!empty($filters['type']) && $filters['type'] !== 'all' && $filters['type'] !== 'ALL') {
+            if (strcasecmp($filters['type'], 'Normal') === 0) {
+                $where[] = "(acc.account_type IS NULL OR acc.account_type IN ('CUSTOMER', 'SUPPLIER'))";
+            } else {
+                $where[] = 'acc.account_type = :f_acc_type';
+                $params['f_acc_type'] = strtoupper(trim($filters['type']));
+            }
+        }
+
+        // Date From / Single Date
+        if (!empty($filters['date'])) {
+            $where[] = 'db.balance_date = :f_single_date';
+            $params['f_single_date'] = $filters['date'];
+        } else {
+            if (!empty($filters['from_date'])) {
+                $where[] = 'db.balance_date >= :f_from_date';
+                $params['f_from_date'] = $filters['from_date'];
+            }
+            if (!empty($filters['to_date'])) {
+                $where[] = 'db.balance_date <= :f_to_date';
+                $params['f_to_date'] = $filters['to_date'];
+            }
+        }
+
+        // Opening Date
+        if (!empty($filters['opening_date'])) {
+            $where[] = 'db.balance_date <= :f_opening_date';
+            $params['f_opening_date'] = $filters['opening_date'];
+        }
+
         // Group filter (via joined account_groups)
-        if (!empty($filters['group_id']) && $filters['group_id'] !== 'all') {
+        if (!empty($filters['group_id']) && $filters['group_id'] !== 'all' && $filters['group_id'] !== 'ALL') {
             $where[] = 'acc.group_id = :f_group_id';
             $params['f_group_id'] = (int)$filters['group_id'];
-        } elseif (!empty($filters['group_name']) && $filters['group_name'] !== 'all') {
+        } elseif (!empty($filters['group_name']) && $filters['group_name'] !== 'all' && $filters['group_name'] !== 'ALL') {
             $where[] = 'grp.name = :f_group_name';
             $params['f_group_name'] = trim($filters['group_name']);
         }
 
-        // Balance Filter Flags
-        $balFilter = $filters['balance_filter'] ?? 'all';
-        if ($balFilter === 'with_balance') {
+        // Amount range filter (Amount Filter modal)
+        if (!empty($filters['min_amount'])) {
+            $where[] = 'db.amount >= :f_min_amt';
+            $params['f_min_amt'] = (float)$filters['min_amount'];
+        }
+        if (!empty($filters['max_amount'])) {
+            $where[] = 'db.amount <= :f_max_amt';
+            $params['f_max_amt'] = (float)$filters['max_amount'];
+        }
+
+        // Outstanding button filter
+        if (!empty($filters['outstanding_only'])) {
+            $where[] = '(db.amount > 0 OR db.gold_fine > 0 OR db.silver_fine > 0)';
+        }
+
+        // Agent / High Priority button filter
+        if (!empty($filters['agent_hp_only'])) {
+            $where[] = "((cust.RefBy IS NOT NULL AND cust.RefBy != '') OR cust.Potential >= 25000 OR ABS(db.amount) >= 50000)";
+        }
+
+        // Checkbox Flags
+        if (!empty($filters['with_balance'])) {
             $where[] = '(db.amount != 0 OR db.gold_fine != 0 OR db.silver_fine != 0)';
-        } elseif ($balFilter === 'zero_balance') {
+        }
+        if (!empty($filters['zero_balance'])) {
             $where[] = '(db.amount = 0 AND db.gold_fine = 0 AND db.silver_fine = 0)';
-        } elseif ($balFilter === 'dia_stn_balance') {
+        }
+        if (!empty($filters['dia_stn_balance'])) {
+            $where[] = '(db.diamond_weight != 0 OR db.stone_weight != 0)';
+        }
+        if (!empty($filters['hisab_final'])) {
+            $where[] = 'db.payment_date IS NOT NULL';
+        }
+        if (!empty($filters['hisab_pending'])) {
+            $where[] = 'db.payment_date IS NULL';
+        }
+        if (!empty($filters['without_transact'])) {
+            $where[] = '(db.payment_date IS NULL)';
+        }
+        if (!empty($filters['high_priority'])) {
+            $where[] = '(cust.Potential >= 50000 OR ABS(db.amount) >= 100000)';
+        }
+        if (!empty($filters['with_last_sp_date'])) {
+            $where[] = 'db.payment_date IS NOT NULL';
+        }
+
+        // Fallback for balance_filter param if passed
+        $balFilter = $filters['balance_filter'] ?? 'all';
+        if ($balFilter === 'with_balance' && empty($filters['with_balance'])) {
+            $where[] = '(db.amount != 0 OR db.gold_fine != 0 OR db.silver_fine != 0)';
+        } elseif ($balFilter === 'zero_balance' && empty($filters['zero_balance'])) {
+            $where[] = '(db.amount = 0 AND db.gold_fine = 0 AND db.silver_fine = 0)';
+        } elseif ($balFilter === 'dia_stn_balance' && empty($filters['dia_stn_balance'])) {
             $where[] = '(db.diamond_weight != 0 OR db.stone_weight != 0)';
         }
 
@@ -122,6 +207,7 @@ class DailyBalance {
                        FROM daily_balance db
                        LEFT JOIN accounts acc ON db.party_id = acc.id
                        LEFT JOIN account_groups grp ON acc.group_id = grp.id
+                       LEFT JOIN customer cust ON (db.party_id = cust.CustomerID OR db.account_name = cust.Name)
                        WHERE {$whereSql}";
 
         $summaryStmt = $db->prepare($summarySql);
@@ -143,10 +229,17 @@ class DailyBalance {
                        db.balance_date, db.payment_date, db.gold_fine, db.silver_fine,
                        db.amount, db.diamond_weight, db.stone_weight, db.gold_gross_weight,
                        db.silver_gross_weight, db.created_at, db.updated_at,
-                       acc.state AS account_state, grp.name AS group_name
+                       COALESCE(acc.state, cust.Country, '') AS account_state,
+                       COALESCE(grp.name, '') AS group_name,
+                       COALESCE(cust.Location, '') AS location,
+                       COALESCE(cust.RefBy, '') AS ref_by,
+                       COALESCE(cust.Occupation, '') AS occupation,
+                       COALESCE(acc.account_type, 'Normal') AS account_type,
+                       COALESCE(cust.Potential, 0) AS customer_potential
                 FROM daily_balance db
                 LEFT JOIN accounts acc ON db.party_id = acc.id
                 LEFT JOIN account_groups grp ON acc.group_id = grp.id
+                LEFT JOIN customer cust ON (db.party_id = cust.CustomerID OR db.account_name = cust.Name)
                 WHERE {$whereSql}
                 ORDER BY {$sortCol} {$sortDir}
                 LIMIT :limit OFFSET :offset";
@@ -343,25 +436,79 @@ class DailyBalance {
     /**
      * Filter options for dropdowns
      */
-    public static function getFilterOptions(): array {
+    public static function getFilterOptions(?string $state = null): array {
         $db = Database::getConnection();
 
-        // Cities from daily_balance
-        $cityStmt = $db->query("SELECT DISTINCT city FROM daily_balance WHERE city IS NOT NULL AND TRIM(city) != '' ORDER BY city ASC");
-        $cities = $cityStmt->fetchAll(PDO::FETCH_COLUMN);
+        // Cities from daily_balance + accounts + customer (optionally filtered by state)
+        if ($state && $state !== 'all' && $state !== 'ALL' && $state !== 'ALL STATE') {
+            $cityStmt = $db->prepare("
+                SELECT DISTINCT city FROM (
+                    SELECT city FROM accounts WHERE state = :st1 AND city IS NOT NULL AND TRIM(city) != ''
+                    UNION
+                    SELECT City AS city FROM customer WHERE (Country = :st2 OR Address1 LIKE :st3) AND City IS NOT NULL AND TRIM(City) != ''
+                    UNION
+                    SELECT city FROM daily_balance WHERE city IS NOT NULL AND TRIM(city) != ''
+                ) t ORDER BY city ASC
+            ");
+            $cityStmt->execute([
+                ':st1' => $state,
+                ':st2' => $state,
+                ':st3' => '%' . $state . '%'
+            ]);
+            $cities = $cityStmt->fetchAll(PDO::FETCH_COLUMN);
+        } else {
+            $cityStmt = $db->query("
+                SELECT DISTINCT city FROM (
+                    SELECT city FROM daily_balance WHERE city IS NOT NULL AND TRIM(city) != ''
+                    UNION
+                    SELECT city FROM accounts WHERE city IS NOT NULL AND TRIM(city) != ''
+                    UNION
+                    SELECT City AS city FROM customer WHERE City IS NOT NULL AND TRIM(City) != ''
+                ) t ORDER BY city ASC
+            ");
+            $cities = $cityStmt->fetchAll(PDO::FETCH_COLUMN);
+        }
 
-        // States from accounts
-        $stateStmt = $db->query("SELECT DISTINCT state FROM accounts WHERE state IS NOT NULL AND TRIM(state) != '' ORDER BY state ASC");
+        // States from accounts + customer
+        $stateStmt = $db->query("
+            SELECT DISTINCT state FROM (
+                SELECT state FROM accounts WHERE state IS NOT NULL AND TRIM(state) != ''
+                UNION
+                SELECT Country AS state FROM customer WHERE Country IS NOT NULL AND TRIM(Country) != ''
+            ) t ORDER BY state ASC
+        ");
         $states = $stateStmt->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($states)) {
+            $states = ['Gujarat', 'Maharashtra', 'Rajasthan', 'Delhi', 'Karnataka'];
+        }
+
+        // Locations from customer
+        $locStmt = $db->query("SELECT DISTINCT Location FROM customer WHERE Location IS NOT NULL AND TRIM(Location) != '' ORDER BY Location ASC");
+        $locations = $locStmt->fetchAll(PDO::FETCH_COLUMN);
 
         // Groups from account_groups
         $groupStmt = $db->query("SELECT id, name FROM account_groups ORDER BY name ASC");
         $groups = $groupStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Ref By from customer
+        $refStmt = $db->query("SELECT DISTINCT RefBy FROM customer WHERE RefBy IS NOT NULL AND TRIM(RefBy) != '' ORDER BY RefBy ASC");
+        $refBys = $refStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        // Occupations from customer
+        $occStmt = $db->query("SELECT DISTINCT Occupation FROM customer WHERE Occupation IS NOT NULL AND TRIM(Occupation) != '' ORDER BY Occupation ASC");
+        $occupations = $occStmt->fetchAll(PDO::FETCH_COLUMN);
+
+        // Types
+        $types = ['Normal', 'Customer', 'Supplier', 'Karigar', 'Broker', 'Bank', 'Cash', 'Expense'];
+
         return [
-            'cities' => $cities,
-            'states' => $states,
-            'groups' => $groups,
+            'cities'      => $cities,
+            'states'      => $states,
+            'locations'   => $locations,
+            'groups'      => $groups,
+            'ref_bys'     => $refBys,
+            'occupations' => $occupations,
+            'types'       => $types,
         ];
     }
 
@@ -390,10 +537,17 @@ class DailyBalance {
                        db.balance_date, db.payment_date, db.gold_fine, db.silver_fine,
                        db.amount, db.diamond_weight, db.stone_weight, db.gold_gross_weight,
                        db.silver_gross_weight, db.created_at, db.updated_at,
-                       acc.state AS account_state, grp.name AS group_name
+                       COALESCE(acc.state, cust.Country, '') AS account_state,
+                       COALESCE(grp.name, '') AS group_name,
+                       COALESCE(cust.Location, '') AS location,
+                       COALESCE(cust.RefBy, '') AS ref_by,
+                       COALESCE(cust.Occupation, '') AS occupation,
+                       COALESCE(acc.account_type, 'Normal') AS account_type,
+                       COALESCE(cust.Potential, 0) AS customer_potential
                 FROM daily_balance db
                 LEFT JOIN accounts acc ON db.party_id = acc.id
                 LEFT JOIN account_groups grp ON acc.group_id = grp.id
+                LEFT JOIN customer cust ON (db.party_id = cust.CustomerID OR db.account_name = cust.Name)
                 WHERE {$whereSql}
                 ORDER BY {$sortCol} {$sortDir}";
 
@@ -441,6 +595,11 @@ class DailyBalance {
             'updated_at'          => $row['updated_at'] ?? '',
             'account_state'       => $row['account_state'] ?? '',
             'group_name'          => $row['group_name'] ?? '',
+            'location'            => $row['location'] ?? '',
+            'ref_by'              => $row['ref_by'] ?? '',
+            'occupation'          => $row['occupation'] ?? '',
+            'account_type'        => $row['account_type'] ?? 'Normal',
+            'customer_potential'  => (float)($row['customer_potential'] ?? 0),
         ];
     }
 }

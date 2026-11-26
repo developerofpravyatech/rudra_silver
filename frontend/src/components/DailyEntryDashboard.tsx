@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DailySummary } from '../types';
 
 interface DailyEntryDashboardProps {
@@ -12,14 +13,31 @@ export const DailyEntryDashboard: React.FC<DailyEntryDashboardProps> = ({
   onOpenVoucher,
   onOpenLedger
 }) => {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState<string>(summary.date || '2026-11-17');
   const dayName = new Date(currentDate).toLocaleDateString('en-US', { weekday: 'long' });
+  const [summaryDate, setSummaryDate] = useState<string>(summary.date || '2026-11-17');
+
+  // Auto-refresh summary data every 30 seconds
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      // Would need to call an API to refresh summary - for now keep existing state
+      // The summary prop is expected to be updated by parent component
+    }, 30000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Handle keyboard shortcuts globally
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept if typing in an input
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+
+      if (e.ctrlKey && (e.key === 'c' || e.key === 'C') && !window.getSelection()?.toString()) {
+        e.preventDefault();
+        navigate('/customer-profit-report');
         return;
       }
 
@@ -52,7 +70,12 @@ export const DailyEntryDashboard: React.FC<DailyEntryDashboardProps> = ({
         case 'g':
         case 'G': onOpenVoucher('EXPENSE'); break;
         case 'F1': e.preventDefault(); onOpenLedger(); break;
-        case 'F2': e.preventDefault(); alert('Metal Stock: Opening 45.2kg | Sale 2.4kg | Balance 42.8kg'); break;
+        case 'F2': e.preventDefault(); navigate('/metal-stock'); break;
+        case 'F3': e.preventDefault(); navigate('/daily-balance'); break;
+        case 'F4': e.preventDefault(); navigate('/age-wise-list'); break;
+        case 'F5': e.preventDefault(); navigate('/transactions'); break;
+        case 'F7': e.preventDefault(); navigate('/silver-bullion'); break;
+        case 'F9': e.preventDefault(); navigate('/stock-list'); break;
       }
     };
 
@@ -87,16 +110,16 @@ export const DailyEntryDashboard: React.FC<DailyEntryDashboardProps> = ({
 
   const fKeyShortcuts = [
     { key: 'F1', label: 'Ledger Short', action: onOpenLedger },
-    { key: 'F2', label: 'Metal Stock', action: () => alert('Live Metal Stock Loaded') },
-    { key: 'F3', label: 'Daily Balance' },
-    { key: 'F4', label: 'Age Wise' },
-    { key: 'F5', label: 'Daily Transaction' },
+    { key: 'F2', label: 'Metal Stock', action: () => navigate('/metal-stock') },
+    { key: 'F3', label: 'Daily Balance', action: () => navigate('/daily-balance') },
+    { key: 'F4', label: 'Age Wise', action: () => navigate('/age-wise-list') },
+    { key: 'F5', label: 'Daily Transaction', action: () => navigate('/transactions') },
     { key: 'F6', label: 'Cash Book' },
-    { key: 'F7', label: 'Silver Bullion' },
-    { key: 'F9', label: 'Stock' },
+    { key: 'F7', label: 'Silver Bullion', action: () => navigate('/silver-bullion') },
+    { key: 'F9', label: 'Stock', action: () => navigate('/stock-list') },
     { key: 'Ctrl+A', label: 'Sale Register' },
     { key: 'Ctrl+B', label: 'Purchase Register' },
-    { key: 'Ctrl+C', label: 'Profit Customer wis' },
+    { key: 'Ctrl+C', label: 'Profit Customer wis', action: () => navigate('/customer-profit-report') },
     { key: 'Ctrl+D', label: 'sale Detailed' },
     { key: 'Ctrl+E', label: 'purchase Detailed' }
   ];

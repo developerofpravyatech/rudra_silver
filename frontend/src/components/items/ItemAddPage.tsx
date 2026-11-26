@@ -243,32 +243,35 @@ export const ItemAddPage: React.FC<ItemAddPageProps> = ({ onBackToList }) => {
     const errors: Record<string, string> = {};
 
     if (!formData.name.trim()) {
-      errors.name = 'Item Name is required.';
+      errors.name = 'This field is required.';
     }
 
     if (!formData.code.trim()) {
-      errors.code = 'Item Code is required.';
+      errors.code = 'This field is required.';
     } else if (codeStatus.available === false) {
       errors.code = codeStatus.message || 'Item Code is already in use.';
     }
 
     if (!formData.group_name.trim()) {
-      errors.group_name = 'Group Name is required.';
+      errors.group_name = 'This field is required.';
     }
 
     if (isNaN(Number(formData.tunch)) || Number(formData.tunch) < 0 || Number(formData.tunch) > 100) {
       errors.tunch = 'Tunch must be between 0 and 100.';
     }
 
-    if (isNaN(Number(formData.default_labour_rate)) || Number(formData.default_labour_rate) < 0) {
-      errors.default_labour_rate = 'Labour rate cannot be negative.';
-    }
-
-    if (isNaN(Number(formData.default_wastage)) || Number(formData.default_wastage) < 0) {
-      errors.default_wastage = 'Wastage percentage cannot be negative.';
-    }
-
     setFormErrors(errors);
+    const firstInvalid = Object.keys(errors)[0];
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
+                    document.querySelector('.border-red-400, .border-red-500, .border-red-600')) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
     return Object.keys(errors).length === 0;
   };
 
@@ -472,8 +475,14 @@ export const ItemAddPage: React.FC<ItemAddPageProps> = ({ onBackToList }) => {
               </label>
               <input
                 type="text"
+                name="group_name"
                 value={formData.group_name}
                 onChange={(e) => handleChange('group_name', e.target.value)}
+                onBlur={() => {
+                  if (!formData.group_name.trim()) {
+                    setFormErrors((prev) => ({ ...prev, group_name: 'This field is required.' }));
+                  }
+                }}
                 placeholder="e.g. SILVER JEWELLERY"
                 className={`w-full px-3 py-2 rounded-xl border text-xs text-slate-800 focus:outline-hidden focus:ring-2 ${
                   formErrors.group_name
@@ -494,11 +503,18 @@ export const ItemAddPage: React.FC<ItemAddPageProps> = ({ onBackToList }) => {
               <div className="relative">
                 <input
                   type="text"
+                  name="code"
                   value={formData.code}
                   onChange={(e) => {
                     handleChange('code', e.target.value.toUpperCase());
                   }}
-                  onBlur={(e) => handleCheckCode(e.target.value)}
+                  onBlur={(e) => {
+                    if (!e.target.value.trim()) {
+                      setFormErrors((prev) => ({ ...prev, code: 'This field is required.' }));
+                    } else {
+                      handleCheckCode(e.target.value);
+                    }
+                  }}
                   placeholder="e.g. ITM-PAYAL-02"
                   className={`w-full px-3 py-2 rounded-xl border font-mono font-bold text-xs uppercase focus:outline-hidden focus:ring-2 ${
                     formErrors.code || codeStatus.available === false
@@ -555,11 +571,17 @@ export const ItemAddPage: React.FC<ItemAddPageProps> = ({ onBackToList }) => {
               </label>
               <input
                 type="text"
+                name="name"
                 value={formData.name}
                 onChange={(e) => {
                   handleChange('name', e.target.value);
                   if (!formData.group_name) {
                     handleChange('group_name', e.target.value);
+                  }
+                }}
+                onBlur={() => {
+                  if (!formData.name.trim()) {
+                    setFormErrors((prev) => ({ ...prev, name: 'This field is required.' }));
                   }
                 }}
                 placeholder="e.g. SILVER PAYAL"

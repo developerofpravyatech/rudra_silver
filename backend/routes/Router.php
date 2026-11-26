@@ -6,7 +6,7 @@ use Helpers\Response;
 class Router {
     private array $routes = [];
 
-    public function add(string $method, string $pattern, callable $handler): void {
+    public function add(string $method, string $pattern, mixed $handler): void {
         $this->routes[] = [
             'method'  => strtoupper($method),
             'pattern' => $pattern,
@@ -14,23 +14,23 @@ class Router {
         ];
     }
 
-    public function get(string $pattern, callable $handler): void {
+    public function get(string $pattern, mixed $handler): void {
         $this->add('GET', $pattern, $handler);
     }
 
-    public function post(string $pattern, callable $handler): void {
+    public function post(string $pattern, mixed $handler): void {
         $this->add('POST', $pattern, $handler);
     }
 
-    public function put(string $pattern, callable $handler): void {
+    public function put(string $pattern, mixed $handler): void {
         $this->add('PUT', $pattern, $handler);
     }
 
-    public function patch(string $pattern, callable $handler): void {
+    public function patch(string $pattern, mixed $handler): void {
         $this->add('PATCH', $pattern, $handler);
     }
 
-    public function delete(string $pattern, callable $handler): void {
+    public function delete(string $pattern, mixed $handler): void {
         $this->add('DELETE', $pattern, $handler);
     }
 

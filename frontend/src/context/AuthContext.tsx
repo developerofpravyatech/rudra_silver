@@ -8,7 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
-  login: (mobile: string, password: string) => Promise<void>;
+  login: (emailOrMobile: string, password: string, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -19,13 +19,17 @@ const TOKEN_KEY = 'rudra_auth_token';
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(() => {
-    try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+    try {
+      return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+    } catch {
+      return null;
+    }
   });
   const [isLoading, setIsLoading] = useState(true);
 
   // On mount, validate the stored token against /auth/me
   useEffect(() => {
-    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedToken = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
     if (!storedToken) {
       setIsLoading(false);
       return;
@@ -37,15 +41,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setToken(storedToken);
         } else {
           localStorage.removeItem(TOKEN_KEY);
+          sessionStorage.removeItem(TOKEN_KEY);
           setToken(null);
         }
       })
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback(async (mobile: string, password: string) => {
-    const { access_token, user: loggedInUser } = await loginApi(mobile, password);
-    localStorage.setItem(TOKEN_KEY, access_token);
+  const login = useCallback(async (emailOrMobile: string, password: string, rememberMe: boolean = true) => {
+    const { access_token, user: loggedInUser } = await loginApi(emailOrMobile, password);
+    if (rememberMe) {
+      localStorage.setItem(TOKEN_KEY, access_token);
+      sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+      sessionStorage.setItem(TOKEN_KEY, access_token);
+      localStorage.removeItem(TOKEN_KEY);
+    }
     setToken(access_token);
     setUser(loggedInUser);
   }, []);
@@ -53,6 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = useCallback(async () => {
     await logoutApi();
     localStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
   }, []);

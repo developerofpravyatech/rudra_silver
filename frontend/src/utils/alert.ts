@@ -57,23 +57,20 @@ export async function showErrorAlert(
 
 /**
  * Show Warning / Form Validation Alert
+ * (Suppressed: As per requirement, modal popups for form validation errors are disabled.
+ * Inline field-wise errors are displayed below inputs instead.)
  */
 export async function showValidationAlert(
   message: string = 'Please fill in all required fields.',
   title: string = 'Validation Warning'
 ): Promise<SweetAlertResult> {
-  return Swal.fire({
-    title,
-    text: message,
-    icon: 'warning',
-    confirmButtonText: 'OK',
-    confirmButtonColor: '#2563eb',
-    buttonsStyling: true,
-    customClass: {
-      popup: 'rounded-2xl shadow-xl',
-      confirmButton: 'px-5 py-2.5 rounded-xl font-semibold text-xs',
-    },
-  });
+  console.warn(`[Validation Alert Suppressed] ${title}: ${message}`);
+  return {
+    isConfirmed: true,
+    isDenied: false,
+    isDismissed: false,
+    value: true,
+  } as SweetAlertResult;
 }
 
 /**

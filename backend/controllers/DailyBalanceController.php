@@ -14,15 +14,33 @@ class DailyBalanceController {
     public static function list(): void {
         try {
             $filters = [
-                'search'         => $_GET['search'] ?? null,
-                'account_name'   => $_GET['account_name'] ?? null,
-                'city'           => $_GET['city'] ?? null,
-                'from_date'      => $_GET['from_date'] ?? null,
-                'to_date'        => $_GET['to_date'] ?? null,
-                'state'          => $_GET['state'] ?? null,
-                'group_id'       => $_GET['group_id'] ?? null,
-                'group_name'     => $_GET['group_name'] ?? null,
-                'balance_filter' => $_GET['balance_filter'] ?? 'all',
+                'search'            => $_GET['search'] ?? null,
+                'account_name'      => $_GET['account_name'] ?? null,
+                'city'              => $_GET['city'] ?? null,
+                'state'             => $_GET['state'] ?? null,
+                'location'          => $_GET['location'] ?? null,
+                'group_id'          => $_GET['group_id'] ?? null,
+                'group_name'        => $_GET['group_name'] ?? null,
+                'ref_by'            => $_GET['ref_by'] ?? null,
+                'occupation'        => $_GET['occupation'] ?? null,
+                'type'              => $_GET['type'] ?? null,
+                'date'              => $_GET['date'] ?? null,
+                'opening_date'      => $_GET['opening_date'] ?? null,
+                'from_date'         => $_GET['from_date'] ?? null,
+                'to_date'           => $_GET['to_date'] ?? null,
+                'balance_filter'    => $_GET['balance_filter'] ?? 'all',
+                'with_balance'      => !empty($_GET['with_balance']),
+                'zero_balance'      => !empty($_GET['zero_balance']),
+                'dia_stn_balance'   => !empty($_GET['dia_stn_balance']),
+                'hisab_final'       => !empty($_GET['hisab_final']),
+                'hisab_pending'     => !empty($_GET['hisab_pending']),
+                'without_transact'  => !empty($_GET['without_transact']),
+                'high_priority'     => !empty($_GET['high_priority']),
+                'with_last_sp_date' => !empty($_GET['with_last_sp_date']),
+                'min_amount'        => $_GET['min_amount'] ?? null,
+                'max_amount'        => $_GET['max_amount'] ?? null,
+                'outstanding_only'  => !empty($_GET['outstanding_only']),
+                'agent_hp_only'     => !empty($_GET['agent_hp_only']),
             ];
 
             $sortBy = $_GET['sort_by'] ?? 'id';
@@ -102,19 +120,11 @@ class DailyBalanceController {
             'silver_gross_weight' => 3,
         ];
 
-        foreach ($numericFields as $field => $maxDecimals) {
+        foreach (array_keys($numericFields) as $field) {
             if (array_key_exists($field, $body) && $body[$field] !== null && $body[$field] !== '') {
                 $val = trim((string)$body[$field]);
                 if (!is_numeric($val)) {
                     $errors[$field] = ucfirst(str_replace('_', ' ', $field)) . ' must be a valid number.';
-                    continue;
-                }
-                $num = (float)$val;
-                if (str_contains($val, '.')) {
-                    $decimalPart = substr($val, strpos($val, '.') + 1);
-                    if (strlen($decimalPart) > $maxDecimals) {
-                        $errors[$field] = ucfirst(str_replace('_', ' ', $field)) . " cannot exceed {$maxDecimals} decimal places.";
-                    }
                 }
             }
         }
@@ -202,7 +212,8 @@ class DailyBalanceController {
      */
     public static function filterOptions(): void {
         try {
-            $options = DailyBalance::getFilterOptions();
+            $state = $_GET['state'] ?? null;
+            $options = DailyBalance::getFilterOptions($state);
             Response::json($options);
         } catch (Exception $e) {
             Response::error($e->getMessage(), 500);
@@ -227,15 +238,33 @@ class DailyBalanceController {
     public static function exportAll(): void {
         try {
             $filters = [
-                'search'         => $_GET['search'] ?? null,
-                'account_name'   => $_GET['account_name'] ?? null,
-                'city'           => $_GET['city'] ?? null,
-                'from_date'      => $_GET['from_date'] ?? null,
-                'to_date'        => $_GET['to_date'] ?? null,
-                'state'          => $_GET['state'] ?? null,
-                'group_id'       => $_GET['group_id'] ?? null,
-                'group_name'     => $_GET['group_name'] ?? null,
-                'balance_filter' => $_GET['balance_filter'] ?? 'all',
+                'search'            => $_GET['search'] ?? null,
+                'account_name'      => $_GET['account_name'] ?? null,
+                'city'              => $_GET['city'] ?? null,
+                'state'             => $_GET['state'] ?? null,
+                'location'          => $_GET['location'] ?? null,
+                'group_id'          => $_GET['group_id'] ?? null,
+                'group_name'        => $_GET['group_name'] ?? null,
+                'ref_by'            => $_GET['ref_by'] ?? null,
+                'occupation'        => $_GET['occupation'] ?? null,
+                'type'              => $_GET['type'] ?? null,
+                'date'              => $_GET['date'] ?? null,
+                'opening_date'      => $_GET['opening_date'] ?? null,
+                'from_date'         => $_GET['from_date'] ?? null,
+                'to_date'           => $_GET['to_date'] ?? null,
+                'balance_filter'    => $_GET['balance_filter'] ?? 'all',
+                'with_balance'      => !empty($_GET['with_balance']),
+                'zero_balance'      => !empty($_GET['zero_balance']),
+                'dia_stn_balance'   => !empty($_GET['dia_stn_balance']),
+                'hisab_final'       => !empty($_GET['hisab_final']),
+                'hisab_pending'     => !empty($_GET['hisab_pending']),
+                'without_transact'  => !empty($_GET['without_transact']),
+                'high_priority'     => !empty($_GET['high_priority']),
+                'with_last_sp_date' => !empty($_GET['with_last_sp_date']),
+                'min_amount'        => $_GET['min_amount'] ?? null,
+                'max_amount'        => $_GET['max_amount'] ?? null,
+                'outstanding_only'  => !empty($_GET['outstanding_only']),
+                'agent_hp_only'     => !empty($_GET['agent_hp_only']),
             ];
 
             $sortBy = $_GET['sort_by'] ?? 'id';

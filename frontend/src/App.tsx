@@ -5,12 +5,12 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
 import { TopNavbar } from './components/TopNavbar';
 import { Sidebar } from './components/Sidebar';
 import { MainDashboard } from './components/MainDashboard';
 import { PosBillingModal } from './components/PosBillingModal';
 import { AccountLedgerModal } from './components/AccountLedgerModal';
-import { StockStatusPage } from './components/StockStatusPage';
 import { StockListPage } from './components/stock/StockListPage';
 import { StockAddPage } from './components/stock/StockAddPage';
 import { StockEditPage } from './components/stock/StockEditPage';
@@ -30,11 +30,29 @@ import { CategoryEditPage } from './components/categories/CategoryEditPage';
 import { CustomerListPage } from './components/customers/CustomerListPage';
 import { CustomerAddPage } from './components/customers/CustomerAddPage';
 import { CustomerEditPage } from './components/customers/CustomerEditPage';
-import { TransactionPage } from './components/TransactionPage';
+import { TransactionsList, TransactionInsert, TransactionUpdate } from './components/transactions';
+import {
+  SilverBullionListPage,
+  SilverBullionAddPage,
+  SilverBullionEditPage,
+} from './components/silver-bullion';
+import {
+  PurchaseRegisterListPage,
+  PurchaseRegisterAddPage,
+  PurchaseRegisterEditPage,
+} from './components/purchaseRegister';
+import {
+  SaleRegisterListPage,
+  SaleRegisterAddPage,
+  SaleRegisterEditPage,
+} from './components/saleRegister';
+import { CustomerProfitReportPage } from './components/customerProfitReport';
+import { AgeWiseModulePage } from './components/ageWiseReport';
 import { SilverWeighingModal } from './components/SilverWeighingModal';
 import { SilverRateModal } from './components/SilverRateModal';
 import { CategoryItemsModal } from './components/CategoryItemsModal';
 import { ItemModuleContainer } from './components/ItemModuleContainer';
+import { KarigarModulePage, KarigarAddPage, KarigarEditPage } from './components/karigar';
 import { InventoryPage } from './components/InventoryPage';
 import { InvoiceHistoryPage } from './components/InvoiceHistoryPage';
 import { ReportsPage } from './components/ReportsPage';
@@ -87,6 +105,8 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     '/items': 'item-master',
     '/item-master': 'item-master',
     '/items/add': 'item-add',
+    '/karigar': 'karigar',
+    '/karigar/add': 'karigar-add',
     '/categories': 'category-list',
     '/category-list': 'category-list',
     '/categories/add': 'category-add',
@@ -104,6 +124,15 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     '/daily-balance': 'daily-balance',
     '/daily-balance/add': 'daily-balance-add',
     '/transactions': 'transactions',
+    '/transactions/add': 'transactions-add',
+    '/silver-bullion': 'silver-bullion',
+    '/silver-bullion/add': 'silver-bullion-add',
+    '/purchase-register': 'purchase-register',
+    '/purchase-register/add': 'purchase-register-add',
+    '/sale-register': 'sale-register',
+    '/sale-register/add': 'sale-register-add',
+    '/customer-profit-report': 'customer-profit-report',
+    '/age-wise-list': 'age-wise-list',
     '/party-ledgers': 'party-ledgers',
     '/invoice-history': 'invoice-history',
     '/reports': 'reports',
@@ -140,6 +169,30 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
         tab = 'customer-edit';
       } else if (location.pathname === '/customers/add') {
         tab = 'customer-add';
+      } else if (location.pathname.startsWith('/transactions/edit/')) {
+        tab = 'transactions-edit';
+      } else if (location.pathname === '/transactions/add') {
+        tab = 'transactions-add';
+      } else if (location.pathname.startsWith('/silver-bullion/edit/')) {
+        tab = 'silver-bullion-edit';
+      } else if (location.pathname === '/silver-bullion/add') {
+        tab = 'silver-bullion-add';
+      } else if (location.pathname === '/silver-bullion') {
+        tab = 'silver-bullion';
+      } else if (location.pathname.startsWith('/purchase-register/edit/')) {
+        tab = 'purchase-register-edit';
+      } else if (location.pathname === '/purchase-register/add') {
+        tab = 'purchase-register-add';
+      } else if (location.pathname === '/purchase-register') {
+        tab = 'purchase-register';
+      } else if (location.pathname.startsWith('/sale-register/edit/')) {
+        tab = 'sale-register-edit';
+      } else if (location.pathname === '/sale-register/add') {
+        tab = 'sale-register-add';
+      } else if (location.pathname === '/sale-register') {
+        tab = 'sale-register';
+      } else if (location.pathname.startsWith('/karigar/edit/')) {
+        tab = 'karigar-edit';
       } else if (location.pathname === '/customers') {
         tab = 'customers';
       } else {
@@ -184,6 +237,11 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     'daily-balance-add': 'Add Daily Balance',
     'daily-balance-edit': 'Edit Daily Balance',
     'transactions': 'Transaction',
+    'transactions-add': 'Add Transaction',
+    'transactions-edit': 'Edit Transaction',
+    'silver-bullion': 'Silver Bullion',
+    'silver-bullion-add': 'Add Silver Bullion',
+    'silver-bullion-edit': 'Edit Silver Bullion',
     'party-ledgers': 'Party Ledgers',
     'invoice-history': 'Invoice History',
     reports: 'Reports',
@@ -251,7 +309,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
             isScaleConnected={isConnected}
             onConnectScale={connectScale}
             rates={rates}
-            onSendToBilling={(weight, description, touch) => {
+            onSendToBilling={(weight: number, description: string, touch: number) => {
               handleOpenBilling('SALE', {
                 grossWeight: weight,
                 description,
@@ -306,6 +364,41 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
               setActiveSidebarTab('item-master');
               setActiveTopTab('item-master');
               navigate('/items');
+            }}
+          />
+        );
+      }
+
+      case 'karigar':
+        return (
+          <KarigarModulePage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+          />
+        );
+
+      case 'karigar-add':
+        return (
+          <KarigarAddPage
+            onBackToList={() => {
+              setActiveSidebarTab('karigar');
+              navigate('/karigar');
+            }}
+          />
+        );
+
+      case 'karigar-edit': {
+        const idMatch = location.pathname.match(/\/karigar\/edit\/(\d+)/);
+        const recordId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <KarigarEditPage
+            recordId={recordId}
+            onBackToList={() => {
+              setActiveSidebarTab('karigar');
+              navigate('/karigar');
             }}
           />
         );
@@ -528,7 +621,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
 
       case 'stock-status':
         return (
-          <StockStatusPage
+          <StockListPage
             onBackToDashboard={() => {
               setActiveSidebarTab('dashboard');
               setActiveTopTab('dashboard');
@@ -583,10 +676,194 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
 
       case 'transactions':
         return (
-          <TransactionPage
+          <TransactionsList
             onBackToDashboard={() => {
               setActiveSidebarTab('dashboard');
               setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+            onNavigateAdd={() => {
+              setActiveSidebarTab('transactions');
+              navigate('/transactions/add');
+            }}
+            onNavigateEdit={(id) => {
+              setActiveSidebarTab('transactions');
+              navigate(`/transactions/edit/${id}`);
+            }}
+          />
+        );
+
+      case 'transactions-add':
+        return (
+          <TransactionInsert
+            onBackToList={() => {
+              setActiveSidebarTab('transactions');
+              setActiveTopTab('transactions');
+              navigate('/transactions');
+            }}
+          />
+        );
+
+      case 'transactions-edit': {
+        const idMatch = location.pathname.match(/\/transactions\/edit\/(\d+)/);
+        const recordId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <TransactionUpdate
+            recordId={recordId}
+            onBackToList={() => {
+              setActiveSidebarTab('transactions');
+              setActiveTopTab('transactions');
+              navigate('/transactions');
+            }}
+          />
+        );
+      }
+
+      case 'silver-bullion':
+        return (
+          <SilverBullionListPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+            onNavigateAdd={() => {
+              setActiveSidebarTab('silver-bullion');
+              navigate('/silver-bullion/add');
+            }}
+            onNavigateEdit={(id) => {
+              setActiveSidebarTab('silver-bullion');
+              navigate(`/silver-bullion/edit/${id}`);
+            }}
+          />
+        );
+
+      case 'silver-bullion-add':
+        return (
+          <SilverBullionAddPage
+            onBackToList={() => {
+              setActiveSidebarTab('silver-bullion');
+              setActiveTopTab('silver-bullion');
+              navigate('/silver-bullion');
+            }}
+          />
+        );
+
+      case 'silver-bullion-edit': {
+        const idMatch = location.pathname.match(/\/silver-bullion\/edit\/(\d+)/);
+        const recordId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <SilverBullionEditPage
+            recordId={recordId}
+            onBackToList={() => {
+              setActiveSidebarTab('silver-bullion');
+              setActiveTopTab('silver-bullion');
+              navigate('/silver-bullion');
+            }}
+          />
+        );
+      }
+
+      case 'purchase-register':
+        return (
+          <PurchaseRegisterListPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+            onNavigateAdd={() => {
+              setActiveSidebarTab('purchase-register');
+              navigate('/purchase-register/add');
+            }}
+            onNavigateEdit={(id) => {
+              setActiveSidebarTab('purchase-register');
+              navigate(`/purchase-register/edit/${id}`);
+            }}
+          />
+        );
+
+      case 'purchase-register-add':
+        return (
+          <PurchaseRegisterAddPage
+            onBackToList={() => {
+              setActiveSidebarTab('purchase-register');
+              setActiveTopTab('purchase-register');
+              navigate('/purchase-register');
+            }}
+          />
+        );
+
+      case 'purchase-register-edit': {
+        const idMatch = location.pathname.match(/\/purchase-register\/edit\/(\d+)/);
+        const recordId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <PurchaseRegisterEditPage
+            recordId={recordId}
+            onBackToList={() => {
+              setActiveSidebarTab('purchase-register');
+              setActiveTopTab('purchase-register');
+              navigate('/purchase-register');
+            }}
+          />
+        );
+      }
+
+      case 'sale-register':
+        return (
+          <SaleRegisterListPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+            onNavigateAdd={() => {
+              setActiveSidebarTab('sale-register');
+              navigate('/sale-register/add');
+            }}
+            onNavigateEdit={(id) => {
+              setActiveSidebarTab('sale-register');
+              navigate(`/sale-register/edit/${id}`);
+            }}
+          />
+        );
+
+      case 'sale-register-add':
+        return (
+          <SaleRegisterAddPage
+            onBackToList={() => {
+              setActiveSidebarTab('sale-register');
+              setActiveTopTab('sale-register');
+              navigate('/sale-register');
+            }}
+          />
+        );
+
+      case 'sale-register-edit': {
+        const idMatch = location.pathname.match(/\/sale-register\/edit\/(\d+)/);
+        const recordId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <SaleRegisterEditPage
+            recordId={recordId}
+            onBackToList={() => {
+              setActiveSidebarTab('sale-register');
+              setActiveTopTab('sale-register');
+              navigate('/sale-register');
+            }}
+          />
+        );
+      }
+
+      case 'customer-profit-report':
+        return <CustomerProfitReportPage />;
+
+      case 'age-wise-list':
+        return (
+          <AgeWiseModulePage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
             }}
           />
         );
@@ -605,7 +882,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
         return (
           <ReportsPage
             summary={summary}
-            onOpenVoucher={(type) => handleOpenBilling(type)}
+            onOpenVoucher={(type: string) => handleOpenBilling(type)}
             onOpenLedger={() => {
               setActiveSidebarTab('party-ledgers');
               setActiveTopTab('reports');
@@ -731,7 +1008,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
             if (tab === 'dashboard') setActiveTopTab('dashboard');
             else if (tab === 'new-billing') setActiveTopTab('billing');
             else if (tab === 'inventory' || tab === 'item-master' || tab === 'category-list') setActiveTopTab('inventory');
-            else if (tab === 'reports' || tab === 'customers' || tab === 'invoice-history') setActiveTopTab('reports');
+            else if (tab === 'reports' || tab === 'customers' || tab === 'invoice-history' || tab === 'customer-profit-report' || tab === 'age-wise-list') setActiveTopTab('reports');
             else if (tab === 'settings' || tab === 'printer-settings' || tab === 'user-management' || tab === 'scale-connection') setActiveTopTab('settings');
           }}
         />
@@ -747,13 +1024,31 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
 
 const AppRouter: React.FC = () => {
   const { user, isLoading, isAuthenticated, logout } = useAuth();
-  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot-password'>('login');
+  const [authView, setAuthView] = useState<'login' | 'register' | 'forgot-password' | 'reset-password'>('login');
+  const [resetToken, setResetToken] = useState<string>('');
+
+  useEffect(() => {
+    // Detect token in URL parameter or hash
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || params.get('reset_token');
+    if (token) {
+      setResetToken(token);
+      setAuthView('reset-password');
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoading) {
       document.title = 'Rudra Silver';
     } else if (!isAuthenticated) {
-      const name = authView === 'register' ? 'Register' : authView === 'forgot-password' ? 'Forgot Password' : 'Login';
+      const name =
+        authView === 'register'
+          ? 'Register'
+          : authView === 'forgot-password'
+            ? 'Forgot Password'
+            : authView === 'reset-password'
+              ? 'Reset Password'
+              : 'Login';
       document.title = `${name} | Rudra Silver`;
     }
   }, [isLoading, isAuthenticated, authView]);
@@ -784,7 +1079,30 @@ const AppRouter: React.FC = () => {
       return <RegisterPage onGoLogin={() => setAuthView('login')} />;
     }
     if (authView === 'forgot-password') {
-      return <ForgotPasswordPage onGoLogin={() => setAuthView('login')} />;
+      return (
+        <ForgotPasswordPage
+          onGoLogin={() => setAuthView('login')}
+          onGoResetWithToken={(token) => {
+            setResetToken(token);
+            setAuthView('reset-password');
+          }}
+        />
+      );
+    }
+    if (authView === 'reset-password') {
+      return (
+        <ResetPasswordPage
+          token={resetToken}
+          onGoLogin={() => {
+            // Clean token from URL query without full reload
+            if (window.location.search.includes('token=')) {
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }
+            setAuthView('login');
+          }}
+          onGoForgotPassword={() => setAuthView('forgot-password')}
+        />
+      );
     }
     return (
       <LoginPage

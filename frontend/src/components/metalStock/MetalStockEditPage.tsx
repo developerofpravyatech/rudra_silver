@@ -110,13 +110,28 @@ export const MetalStockEditPage: React.FC<MetalStockEditPageProps> = ({ recordId
 
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
+
+    // Required fields
     if (!formData.item_name.trim()) {
-      errs.item_name = 'Item Name is required.';
+      errs.item_name = 'This field is required.';
     }
     if (!formData.stock_date) {
-      errs.stock_date = 'Stock Date is required.';
+      errs.stock_date = 'This field is required.';
+    }
+    if (!formData.group_name.trim()) {
+      errs.group_name = 'This field is required.';
+    }
+    if (!formData.stock_type) {
+      errs.stock_type = 'This field is required.';
+    }
+    if (!formData.unit.trim()) {
+      errs.unit = 'This field is required.';
+    }
+    if (!formData.entry_no.trim()) {
+      errs.entry_no = 'This field is required.';
     }
 
+    // Validate numeric fields if entered (allow negative, zero, decimal)
     const numericFields = [
       'pc',
       'gross_weight',
@@ -137,21 +152,29 @@ export const MetalStockEditPage: React.FC<MetalStockEditPageProps> = ({ recordId
           errs[f] = 'Must be a valid number.';
           return;
         }
-        const num = Number(strVal);
-        if (num < 0) {
-          errs[f] = 'Cannot be negative.';
-          return;
-        }
         if (strVal.includes('.')) {
           const dec = strVal.split('.')[1];
           if (dec && dec.length > 3) {
             errs[f] = 'Max 3 decimal places allowed.';
           }
         }
+      } else {
+        errs[f] = 'This field is required.';
       }
     });
 
     setErrors(errs);
+    const firstInvalid = Object.keys(errs)[0];
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
+                    document.querySelector('.border-red-400, .border-red-500')) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
     return Object.keys(errs).length === 0;
   };
 
@@ -161,7 +184,6 @@ export const MetalStockEditPage: React.FC<MetalStockEditPageProps> = ({ recordId
     setSuccessMessage(null);
 
     if (!validate()) {
-      showValidationAlert('Please fill in all required fields and correct the highlighted errors.', 'Validation Warning');
       return;
     }
 
@@ -271,6 +293,15 @@ export const MetalStockEditPage: React.FC<MetalStockEditPageProps> = ({ recordId
                     Stock Date <span className="text-red-500">*</span>
                   </label>
                   <input
+                    type="date"
+                    name="stock_date"
+                    value={formData.stock_date}
+                    onChange={(e) => handleChange('stock_date', e.target.value)}
+                    onBlur={() => {
+                      if (!formData.stock_date) {
+                        setErrors((prev) => ({ ...prev, stock_date: 'This field is required.' }));
+                      }
+                    }}
                     className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-blue-500 ${
                       errors.stock_date ? 'border-red-400 bg-red-50' : 'border-slate-300'
                     }`}
@@ -303,8 +334,14 @@ export const MetalStockEditPage: React.FC<MetalStockEditPageProps> = ({ recordId
                   </label>
                   <input
                     type="text"
+                    name="item_name"
                     value={formData.item_name}
                     onChange={(e) => handleChange('item_name', e.target.value)}
+                    onBlur={() => {
+                      if (!formData.item_name.trim()) {
+                        setErrors((prev) => ({ ...prev, item_name: 'This field is required.' }));
+                      }
+                    }}
                     placeholder="e.g. 7T D PAYAL"
                     list="item-options"
                     className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-blue-500 uppercase font-semibold ${

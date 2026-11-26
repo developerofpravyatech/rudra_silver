@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, User as UserIcon, Phone, UserPlus, Loader2, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Lock, User as UserIcon, Mail, UserPlus, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { registerApi } from '../services/api';
@@ -14,7 +14,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onGoLogin }) => {
   const { theme, toggleTheme } = useTheme();
 
   const [name, setName] = useState('');
-  const [mobile, setMobile] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -23,29 +23,57 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onGoLogin }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Field-wise validation errors
+  const [errors, setErrors] = useState<{
+    name?: string;
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+  }>({});
+
+  const validate = () => {
+    const errs: {
+      name?: string;
+      email?: string;
+      password?: string;
+      confirmPassword?: string;
+    } = {};
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      errs.name = 'Full name is required.';
+    } else if (trimmedName.length < 2) {
+      errs.name = 'Full name must be at least 2 characters.';
+    }
+
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      errs.email = 'Email address is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      errs.email = 'Please enter a valid email address.';
+    }
+
+    if (!password) {
+      errs.password = 'Password is required.';
+    } else if (password.length < 6) {
+      errs.password = 'Password must be at least 6 characters.';
+    }
+
+    if (!confirmPassword) {
+      errs.confirmPassword = 'Confirm password is required.';
+    } else if (password !== confirmPassword) {
+      errs.confirmPassword = 'Passwords do not match.';
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Validation
-    if (!name.trim() || name.trim().length < 2) {
-      setError('Please enter a valid full name (at least 2 characters).');
-      return;
-    }
-
-    const cleanMobile = mobile.trim().replace(/\s+/g, '');
-    if (!cleanMobile || cleanMobile.length < 10) {
-      setError('Please enter a valid 10-digit mobile number.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+    if (!validate()) {
       return;
     }
 
@@ -53,22 +81,27 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onGoLogin }) => {
     try {
       await registerApi({
         name: name.trim(),
-        mobile: cleanMobile,
+        email: email.trim(),
         password,
+        confirm_password: confirmPassword,
       });
 
       setSuccess(true);
 
-      // Automatic login after successful registration
+      // Attempt automatic login after registration, else direct to login page
       try {
-        await login(cleanMobile, password);
+        await login(email.trim(), password);
       } catch {
         setTimeout(() => {
           onGoLogin();
-        }, 1200);
+        }, 1500);
       }
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Mobile number might already be in use.');
+      const errMsg = err.message || 'Registration failed. Email might already be in use.';
+      setError(errMsg);
+      if (errMsg.toLowerCase().includes('email')) {
+        setErrors((prev) => ({ ...prev, email: errMsg }));
+      }
     } finally {
       setLoading(false);
     }
@@ -133,87 +166,138 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onGoLogin }) => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-3.5" autoComplete="on">
+            <form onSubmit={handleSubmit} className="space-y-3.5" noValidate autoComplete="on">
               {/* Full Name */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Full Name
+                </label>
                 <div className="relative">
                   <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
                     type="text"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="Full Name"
-                    className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                    }}
+                    placeholder="Enter your full name"
+                    autoComplete="name"
+                    className={`w-full pl-11 pr-4 py-2.5 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${errors.name
+                      ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                      : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                      }`}
                   />
                 </div>
+                {errors.name && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.name}
+                  </p>
+                )}
               </div>
 
-              {/* Mobile Number Input */}
+              {/* Email Address */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Email Address
+                </label>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
-                    type="tel"
-                    value={mobile}
-                    onChange={(e) => setMobile(e.target.value)}
-                    required
-                    placeholder="Mobile Number"
-                    autoComplete="tel"
-                    maxLength={15}
-                    className="w-full pl-11 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (errors.email) setErrors((prev) => ({ ...prev, email: undefined }));
+                    }}
+                    placeholder="name@domain.com"
+                    autoComplete="email"
+                    className={`w-full pl-11 pr-4 py-2.5 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${errors.email
+                      ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                      : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                      }`}
                   />
                 </div>
+                {errors.email && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.email}
+                  </p>
+                )}
               </div>
 
               {/* Password */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Password
+                </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
                     type={showPw ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="Password"
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+                    }}
+                    placeholder="Min 6 characters"
                     autoComplete="new-password"
-                    className="w-full pl-11 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    className={`w-full pl-11 pr-11 py-2.5 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${errors.password
+                      ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                      : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                      }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPw((p) => !p)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 transition cursor-pointer"
+                    title={showPw ? 'Hide password' : 'Show password'}
                   >
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.password}
+                  </p>
+                )}
               </div>
 
               {/* Confirm Password */}
               <div>
+                <label className="block text-[11px] font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Confirm Password
+                </label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500 pointer-events-none" />
                   <input
                     type={showConfirmPw ? 'text' : 'password'}
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    placeholder="Confirm Password"
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      if (errors.confirmPassword) setErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                    }}
+                    placeholder="Re-enter password"
                     autoComplete="new-password"
-                    className="w-full pl-11 pr-11 py-2.5 rounded-xl border border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15 transition"
+                    className={`w-full pl-11 pr-11 py-2.5 rounded-xl border text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none transition ${errors.confirmPassword
+                      ? 'border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 focus:ring-2 focus:ring-rose-500/20'
+                      : 'border-slate-200 dark:border-white/[0.1] bg-slate-50 dark:bg-[#131722] focus:border-amber-400 dark:focus:border-amber-500/80 focus:ring-2 focus:ring-amber-400/15'
+                      }`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPw((p) => !p)}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-amber-500 dark:text-slate-500 dark:hover:text-amber-400 transition cursor-pointer"
+                    title={showConfirmPw ? 'Hide password' : 'Show password'}
                   >
                     {showConfirmPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+                {errors.confirmPassword && (
+                  <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <span>•</span> {errors.confirmPassword}
+                  </p>
+                )}
               </div>
-
-
-              {/* Role notice pill */}
 
               {/* Gold Register Button */}
               <button
@@ -233,19 +317,11 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onGoLogin }) => {
                   </>
                 )}
               </button>
-
-              {/* Divider */}
-              <div className="relative my-5 flex items-center justify-center">
-
-
-              </div>
-
             </form>
 
             {/* Divider */}
             <div className="relative my-5 flex items-center justify-center">
               <div className="w-full border-t border-slate-200 dark:border-white/[0.08]" />
-
             </div>
 
             {/* Sign In Link */}

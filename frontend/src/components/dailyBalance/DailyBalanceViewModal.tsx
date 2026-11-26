@@ -3,11 +3,16 @@ import { X, Scale, User, MapPin, Phone, Calendar } from 'lucide-react';
 import { DailyBalanceRecord } from '../../types';
 
 interface DailyBalanceViewModalProps {
-  item: DailyBalanceRecord;
+  item?: DailyBalanceRecord;
+  record?: DailyBalanceRecord;
   onClose: () => void;
+  onEdit?: () => void;
 }
 
-export const DailyBalanceViewModal: React.FC<DailyBalanceViewModalProps> = ({ item, onClose }) => {
+export const DailyBalanceViewModal: React.FC<DailyBalanceViewModalProps> = ({ item: propItem, record, onClose, onEdit }) => {
+  const item = propItem || record;
+  if (!item) return null;
+
   const formatNumber = (val: number | null | undefined, decimals = 3): string => {
     if (val === null || val === undefined || isNaN(Number(val))) return '—';
     return Number(val).toFixed(decimals);

@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { fetchDailyBalanceView, updateDailyBalance, fetchDailyBalanceAccountsLookup } from '../../services/api';
 import { AccountLookupItem } from '../../types';
-import { showSuccessAlert, showErrorAlert, showValidationAlert } from '../../utils/alert';
+import { showSuccessAlert, showErrorAlert } from '../../utils/alert';
 
 interface DailyBalanceEditPageProps {
   recordId: number;
@@ -125,56 +125,64 @@ export const DailyBalanceEditPage: React.FC<DailyBalanceEditPageProps> = ({ reco
     }
   };
 
-  const validate = (): boolean => {
+  const validate = (): string | null => {
     const errs: Record<string, string> = {};
-    if (!formData.account_name.trim()) {
-      errs.account_name = 'Account Name is required.';
-    }
 
+    // Required fields
+    if (!formData.account_name.trim()) {
+      errs.account_name = 'This field is required.';
+    }
+    if (!formData.city.trim()) {
+      errs.city = 'This field is required.';
+    }
     if (formData.mobile.trim()) {
       const cleanMob = formData.mobile.trim().replace(/\D/g, '');
       if (cleanMob.length !== 10) {
         errs.mobile = 'Mobile number must be exactly 10 digits.';
       }
+    } else {
+      errs.mobile = 'Mobile number is required.';
     }
-
-    const numericWeights = [
-      'gold_fine',
-      'silver_fine',
-      'diamond_weight',
-      'stone_weight',
-      'gold_gross_weight',
-      'silver_gross_weight',
-    ];
-    numericWeights.forEach((f) => {
-      const val = (formData as any)[f];
-      if (val !== '' && val !== null && val !== undefined) {
-        const strVal = String(val).trim();
-        if (isNaN(Number(strVal))) {
-          errs[f] = 'Must be a valid number.';
-        } else if (strVal.includes('.')) {
-          const dec = strVal.split('.')[1];
-          if (dec && dec.length > 3) {
-            errs[f] = 'Max 3 decimal places allowed.';
-          }
-        }
-      }
-    });
-
-    if (formData.amount !== '' && formData.amount !== null && formData.amount !== undefined) {
-      const strVal = String(formData.amount).trim();
-      if (isNaN(Number(strVal))) {
-        errs.amount = 'Must be a valid number.';
-      } else if (strVal.includes('.')) {
-        const dec = strVal.split('.')[1];
-        if (dec && dec.length > 2) {
-          errs.amount = 'Max 2 decimal places allowed.';
-        }
-      }
+    if (!formData.balance_date) {
+      errs.balance_date = 'This field is required.';
+    }
+    if (!formData.payment_date) {
+      errs.payment_date = 'This field is required.';
+    }
+    if (!formData.gold_fine.trim()) {
+      errs.gold_fine = 'This field is required.';
+    }
+    if (!formData.silver_fine.trim()) {
+      errs.silver_fine = 'This field is required.';
+    }
+    if (!formData.amount.trim()) {
+      errs.amount = 'This field is required.';
+    }
+    if (!formData.diamond_weight.trim()) {
+      errs.diamond_weight = 'This field is required.';
+    }
+    if (!formData.stone_weight.trim()) {
+      errs.stone_weight = 'This field is required.';
+    }
+    if (!formData.gold_gross_weight.trim()) {
+      errs.gold_gross_weight = 'This field is required.';
+    }
+    if (!formData.silver_gross_weight.trim()) {
+      errs.silver_gross_weight = 'This field is required.';
     }
 
     setErrors(errs);
-    return Object.keys(errs).length === 0;
+    const firstInvalid = Object.keys(errs)[0] || null;
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = document.querySelector(`[name="${firstInvalid}"]`) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
+    return firstInvalid;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -182,8 +190,7 @@ export const DailyBalanceEditPage: React.FC<DailyBalanceEditPageProps> = ({ reco
     setApiError(null);
     setSuccessMessage(null);
 
-    if (!validate()) {
-      showValidationAlert('Please fill in all required fields and correct the highlighted errors.', 'Validation Warning');
+    if (validate()) {
       return;
     }
 
@@ -311,10 +318,16 @@ export const DailyBalanceEditPage: React.FC<DailyBalanceEditPageProps> = ({ reco
                   </label>
                   <input
                     type="text"
+                    name="account_name"
                     value={formData.account_name}
                     onChange={(e) => handleChange('account_name', e.target.value)}
+                    onBlur={() => {
+                      if (!formData.account_name.trim()) {
+                        setErrors((prev) => ({ ...prev, account_name: 'This field is required.' }));
+                      }
+                    }}
                     placeholder="e.g. ASHAPURA JEWELLERS"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-500 uppercase font-semibold"
+                    className={`w-full px-3 py-2 rounded-lg border text-xs focus:ring-2 focus:ring-blue-500 uppercase font-semibold ${errors.account_name ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                   />
                   {errors.account_name && <p className="text-[11px] text-red-500 mt-0.5">{errors.account_name}</p>}
                 </div>

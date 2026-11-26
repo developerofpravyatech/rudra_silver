@@ -69,29 +69,22 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
 
     const trimmedItemName = itemName.trim();
     if (!trimmedItemName) {
-      errs.item_name = 'Item Name is required.';
+      errs.item_name = 'This field is required.';
     }
 
     const trimmedUnit = unit.trim();
     if (!trimmedUnit) {
-      errs.unit = 'Unit is required.';
-    } else if (
-      availableUnits.length > 0 &&
-      !availableUnits.some((u) => u.toLowerCase() === trimmedUnit.toLowerCase())
-    ) {
-      errs.unit = 'Please select a valid unit.';
+      errs.unit = 'This field is required.';
     }
 
-    const checkNumeric = (val: string, field: string) => {
+    const checkField = (val: string, field: string) => {
       const trimmed = val.trim();
-      if (trimmed === '') return;
-      if (isNaN(Number(trimmed)) || !isFinite(Number(trimmed))) {
-        errs[field] = 'Must be a valid number.';
+      if (!trimmed) {
+        errs[field] = 'This field is required.';
         return;
       }
-      const num = Number(trimmed);
-      if (num < 0) {
-        errs[field] = 'Value must be non-negative.';
+      if (isNaN(Number(trimmed)) || !isFinite(Number(trimmed))) {
+        errs[field] = 'Must be a valid number.';
         return;
       }
       const decimalPart = trimmed.split('.')[1];
@@ -100,18 +93,29 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
       }
     };
 
-    checkNumeric(pc, 'pc');
-    checkNumeric(grossWeight, 'gross_weight');
-    checkNumeric(netWeight, 'net_weight');
-    checkNumeric(tunch, 'tunch');
-    checkNumeric(wastage, 'wastage');
-    checkNumeric(labourWeight, 'labour_weight');
-    checkNumeric(rate, 'rate');
-    checkNumeric(silverFine, 'silver_fine');
-    checkNumeric(total, 'total');
-    checkNumeric(goldFine, 'gold_fine');
+    checkField(pc, 'pc');
+    checkField(grossWeight, 'gross_weight');
+    checkField(netWeight, 'net_weight');
+    checkField(tunch, 'tunch');
+    checkField(wastage, 'wastage');
+    checkField(labourWeight, 'labour_weight');
+    checkField(rate, 'rate');
+    checkField(silverFine, 'silver_fine');
+    checkField(total, 'total');
+    checkField(goldFine, 'gold_fine');
 
     setFieldErrors(errs);
+    const firstInvalid = Object.keys(errs)[0];
+    if (firstInvalid) {
+      setTimeout(() => {
+        const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
+                    document.querySelector('.border-red-400, .border-red-500')) as HTMLElement | null;
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 0);
+    }
     return Object.keys(errs).length === 0;
   };
 
@@ -120,10 +124,6 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
     setErrorMsg(null);
 
     if (!validate()) {
-      const msg = !itemName.trim()
-        ? 'Please fill in all required fields.'
-        : 'Please correct the highlighted fields.';
-      await showValidationAlert(msg, 'Validation Error');
       return;
     }
 
@@ -185,8 +185,9 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
               Stock List
             </button>
             <span>/</span>
-            <span className="text-slate-900 font-semibold">Add Stock</span>
-          </nav>
+
+                <span className="text-slate-900 font-semibold">Add Stock</span>
+              </nav>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <button
@@ -231,10 +232,16 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
                   </label>
                   <input
                     type="text"
+                    name="item_name"
                     value={itemName}
                     onChange={(e) => {
                       setItemName(e.target.value);
                       clearError('item_name');
+                    }}
+                    onBlur={() => {
+                      if (!itemName.trim()) {
+                        setFieldErrors((prev) => ({ ...prev, item_name: 'This field is required.' }));
+                      }
                     }}
                     placeholder="e.g. 7T FANCY PAYAL"
                     className={`w-full px-3 py-2 text-sm rounded-lg border font-semibold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
@@ -255,11 +262,17 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
                   </label>
                   <input
                     type="text"
+                    name="unit"
                     list="units-list"
                     value={unit}
                     onChange={(e) => {
                       setUnit(e.target.value);
                       clearError('unit');
+                    }}
+                    onBlur={() => {
+                      if (!unit.trim()) {
+                        setFieldErrors((prev) => ({ ...prev, unit: 'This field is required.' }));
+                      }
                     }}
                     placeholder="e.g. Gm, Pcs"
                     className={`w-full px-3 py-2 text-sm rounded-lg border bg-white font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${

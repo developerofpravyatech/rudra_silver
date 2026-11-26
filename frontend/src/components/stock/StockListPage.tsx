@@ -22,7 +22,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Package,
+  Printer,
+  MessageCircle,
 } from 'lucide-react';
+import { printReport, downloadReportPdf, shareReportOnWhatsApp, ReportPdfOptions } from '../../utils/reportPdf';
 import { StockStatusRecord, PaginatedStockStatus, StockStatusTotals, StockStatusFilterParams } from '../../types';
 import { fetchStockStatusList, deleteStockStatus, fetchStockStatusUnits, fetchStockStatusAll } from '../../services/api';
 import { showSuccessAlert, showErrorAlert, showDeleteConfirmDialog } from '../../utils/alert';
@@ -333,8 +336,66 @@ export const StockListPage: React.FC<StockListPageProps> = ({
     }
   };
 
-  // Export PDF with full table & grand totals of ALL matching records
-  const handleExportPDF = async () => {
+  // Build PDF Report Options for Print, PDF Download, and WhatsApp Sharing
+  const getStockReportOptions = (records: StockStatusRecord[]): ReportPdfOptions => {
+    const today = new Date().toISOString().split('T')[0];
+    return {
+      title: 'Stock List Report',
+      subtitle: 'Rudra Silver Jewellery ERP',
+      filename: `Stock_List_${today}.pdf`,
+      filters: [
+        { label: 'Unit', value: selectedUnit === 'all' ? 'All Units' : selectedUnit },
+        { label: 'Search', value: appliedSearch || 'All' },
+        { label: 'Total Records', value: String(records.length) },
+      ],
+      columns: [
+        { header: 'Item Name', dataKey: 'item_name', align: 'left' },
+        { header: 'Unit', dataKey: 'unit', align: 'center' },
+        { header: 'Pc', dataKey: 'pc', align: 'right' },
+        { header: 'Gr. Wt', dataKey: 'gross_weight', align: 'right' },
+        { header: 'Net Wt', dataKey: 'net_weight', align: 'right' },
+        { header: 'Tunch', dataKey: 'tunch', align: 'right' },
+        { header: 'Wstg', dataKey: 'wastage', align: 'right' },
+        { header: 'Lbr. Wt', dataKey: 'labour_weight', align: 'right' },
+        { header: 'Rate', dataKey: 'rate', align: 'right' },
+        { header: 'Sil. Fine', dataKey: 'silver_fine', align: 'right' },
+        { header: 'Total (₹)', dataKey: 'total', align: 'right' },
+        { header: 'Gold Fine', dataKey: 'gold_fine', align: 'right' },
+      ],
+      data: records.map((r) => ({
+        item_name: r.item_name,
+        unit: r.unit || 'Gm',
+        pc: r.pc ?? '—',
+        gross_weight: formatNumber(r.gross_weight, 3),
+        net_weight: formatNumber(r.net_weight, 3),
+        tunch: formatNumber(r.tunch, 2),
+        wastage: formatNumber(r.wastage, 2),
+        labour_weight: formatNumber(r.labour_weight, 3),
+        rate: formatNumber(r.rate, 2),
+        silver_fine: formatNumber(r.silver_fine, 3),
+        total: formatNumber(r.total, 2),
+        gold_fine: formatNumber(r.gold_fine, 3),
+      })),
+      totals: {
+        item_name: 'GRAND TOTAL',
+        unit: '',
+        pc: String(totals.total_pc),
+        gross_weight: formatNumber(totals.total_gross_weight, 3),
+        net_weight: formatNumber(totals.total_net_weight, 3),
+        tunch: '',
+        wastage: '',
+        labour_weight: '',
+        rate: '',
+        silver_fine: formatNumber(totals.total_silver_fine, 3),
+        total: `₹${formatNumber(totals.total_amount, 2)}`,
+        gold_fine: '',
+      },
+      orientation: 'landscape',
+    };
+  };
+
+  // 1. Print Action: Formatted PDF Report with Header, AutoTable & Totals
+  const handlePrint = async () => {
     try {
       setExporting(true);
       const allRecords = await fetchStockStatusAll({
@@ -343,107 +404,64 @@ export const StockListPage: React.FC<StockListPageProps> = ({
       });
 
       if (!allRecords || allRecords.length === 0) {
-        showToast('No stock data available to export.', 'error');
+        showToast('No stock data available to print.', 'error');
         return;
       }
 
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        showToast('Pop-up blocked. Please allow pop-ups for PDF export.', 'error');
-        return;
-      }
-
-      const content = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Stock List - Rudra Silver ERP</title>
-          <style>
-            @page { size: landscape; margin: 12mm; }
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10px; color: #1e293b; margin: 0; }
-            .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 12px; }
-            .title { font-size: 16px; font-weight: bold; color: #1e293b; }
-            .subtitle { font-size: 10px; color: #64748b; margin-top: 2px; }
-            table { width: 100%; border-collapse: collapse; font-size: 9.5px; }
-            th { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 4px; font-weight: bold; text-align: right; }
-            th:first-child, td:first-child { text-align: left; }
-            th:nth-child(2), td:nth-child(2) { text-align: center; }
-            td { border: 1px solid #e2e8f0; padding: 5px 4px; text-align: right; }
-            .total-row { background: #fcf8ee; font-weight: bold; border-top: 2px solid #cbd5e1; }
-            .total-box { display: inline-block; background: #fff; border: 1px solid #94a3b8; border-radius: 3px; padding: 2px 6px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div>
-              <div class="title">RUDRA SILVER ERP – STOCK LIST</div>
-              <div class="subtitle">Generated on: ${new Date().toLocaleString()} | Filter: ${selectedUnit === 'all' ? 'All Units' : selectedUnit} | Total Records: ${allRecords.length}</div>
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Item Name</th>
-                <th>Unit</th>
-                <th>Pc</th>
-                <th>Gr.Wt.</th>
-                <th>Net.Wt.</th>
-                <th>Tunch</th>
-                <th>Wstg</th>
-                <th>Lbr.Wt</th>
-                <th>Rate</th>
-                <th>Sil.Fine</th>
-                <th>Total</th>
-                <th>Gold Fine</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${allRecords.map(item => `
-                <tr>
-                  <td>${item.item_name}</td>
-                  <td>${item.unit || 'Gm'}</td>
-                  <td>${item.pc ?? '—'}</td>
-                  <td>${formatNumber(item.gross_weight, 3)}</td>
-                  <td>${formatNumber(item.net_weight, 3)}</td>
-                  <td>${formatNumber(item.tunch, 2)}</td>
-                  <td>${formatNumber(item.wastage, 2)}</td>
-                  <td>${formatNumber(item.labour_weight, 3)}</td>
-                  <td>${formatNumber(item.rate, 3)}</td>
-                  <td>${formatNumber(item.silver_fine, 3)}</td>
-                  <td>${formatNumber(item.total, 3)}</td>
-                  <td>${formatNumber(item.gold_fine, 3)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-            <tfoot>
-              <tr class="total-row">
-                <td>GRAND TOTAL</td>
-                <td></td>
-                <td><span class="total-box">${totals.total_pc}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_gross_weight, 3)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_net_weight, 3)}</span></td>
-                <td></td><td></td><td></td><td></td>
-                <td><span class="total-box">${formatNumber(totals.total_silver_fine, 3)}</span></td>
-                <td><span class="total-box">${formatNumber(totals.total_amount, 0)}</span></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
-          <script>window.onload = function() { window.print(); };</script>
-        </body>
-        </html>
-      `;
-
-      printWindow.document.open();
-      printWindow.document.write(content);
-      printWindow.document.close();
-      showToast(`Generated PDF document with ${allRecords.length} records.`);
+      await printReport(getStockReportOptions(allRecords));
     } catch (err: any) {
-      showToast(err.message || 'Failed to export PDF.', 'error');
+      showToast(err.message || 'Failed to print report.', 'error');
     } finally {
       setExporting(false);
     }
   };
+
+  // 2. Download PDF Action: Direct PDF File Download (Stock_List_YYYY-MM-DD.pdf)
+  const handleDownloadPDF = async () => {
+    try {
+      setExporting(true);
+      const allRecords = await fetchStockStatusAll({
+        search: appliedSearch || undefined,
+        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
+      });
+
+      if (!allRecords || allRecords.length === 0) {
+        showToast('No stock data available to export as PDF.', 'error');
+        return;
+      }
+
+      await downloadReportPdf(getStockReportOptions(allRecords));
+    } catch (err: any) {
+      showToast(err.message || 'Failed to download PDF.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // 3. Share on WhatsApp Action: Web Share API file attachment or Web link fallback
+  const handleShareWhatsApp = async () => {
+    try {
+      setExporting(true);
+      const allRecords = await fetchStockStatusAll({
+        search: appliedSearch || undefined,
+        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
+      });
+
+      if (!allRecords || allRecords.length === 0) {
+        showToast('No stock data available to share on WhatsApp.', 'error');
+        return;
+      }
+
+      await shareReportOnWhatsApp(getStockReportOptions(allRecords));
+    } catch (err: any) {
+      showToast(err.message || 'Failed to share on WhatsApp.', 'error');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Export PDF legacy alias
+  const handleExportPDF = handleDownloadPDF;
 
   const renderSortIndicator = (col: string) => {
     if (sortBy !== col) return <ArrowUpDown className="w-3 h-3 text-slate-300 ml-1 inline opacity-0 group-hover:opacity-100 transition" />;
@@ -552,6 +570,42 @@ export const StockListPage: React.FC<StockListPageProps> = ({
                 <span>Add Stock</span>
               </button>
 
+              {/* Print Button */}
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={exporting}
+                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
+                title="Print Stock Report (A4 Landscape, Repeating Headers)"
+              >
+                <Printer className="w-4 h-4 text-blue-600" />
+                <span>Print</span>
+              </button>
+
+              {/* Download PDF Button */}
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                disabled={exporting}
+                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
+                title="Download Stock Report PDF"
+              >
+                <FileText className="w-4 h-4 text-red-600" />
+                <span>PDF</span>
+              </button>
+
+              {/* Share on WhatsApp Button */}
+              <button
+                type="button"
+                onClick={handleShareWhatsApp}
+                disabled={exporting}
+                className="px-3.5 py-2 rounded-lg border border-emerald-300 hover:bg-emerald-50 text-emerald-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-emerald-50/60 cursor-pointer disabled:opacity-50"
+                title="Share Stock Report on WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <span>WhatsApp</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handleExportCSV}
@@ -560,17 +614,6 @@ export const StockListPage: React.FC<StockListPageProps> = ({
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>Export CSV</span>
-              </button>
-
-              {/* Export PDF Button */}
-              <button
-                type="button"
-                onClick={handleExportPDF}
-                disabled={exporting}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer disabled:opacity-50"
-              >
-                <FileText className="w-4 h-4 text-red-600" />
-                <span>Export PDF</span>
               </button>
 
               {/* Export Excel Button */}
