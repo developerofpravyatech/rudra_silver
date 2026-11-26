@@ -14,7 +14,9 @@ class Karigar {
     private static array $sortableColumns = [
         'id'                  => 'a.id',
         'account_code'        => 'a.account_code',
+        'karigar_code'        => 'a.account_code',
         'name'                => 'a.name',
+        'karigar_name'        => 'a.name',
         'city'                => 'a.city',
         'mobile'              => 'a.mobile',
         'balance_inr'         => 'a.balance_inr',
@@ -24,6 +26,25 @@ class Karigar {
         'created_at'          => 'a.created_at',
     ];
 
+    private static function formatRow(array $r): array {
+        $isActive = (int)($r['is_active'] ?? 1);
+        return array_merge($r, [
+            'id'                      => (int)$r['id'],
+            'karigar_code'            => $r['account_code'] ?? '',
+            'karigar_name'            => $r['name'] ?? '',
+            'alternate_mobile'        => $r['phone'] ?? '',
+            'narration'               => $r['email'] ?? '',
+            'opening_amount'          => (float)($r['balance_inr'] ?? 0),
+            'opening_gold_balance'    => (float)($r['balance_fine_gold'] ?? 0),
+            'opening_silver_balance'  => (float)($r['balance_fine_silver'] ?? 0),
+            'opening_diamond_balance' => (float)($r['default_labour_rate'] ?? 0),
+            'opening_stone_balance'   => (float)($r['permissible_loss_percent'] ?? 0),
+            'credit_days'             => (int)($r['credit_days'] ?? 0),
+            'status'                  => $isActive ? 'Active' : 'Inactive',
+            'is_active'               => $isActive,
+        ]);
+    }
+
     public static function list(array $filters): array {
         $pdo = Database::getConnection();
 
@@ -31,7 +52,7 @@ class Karigar {
 
         $sort   = self::$sortableColumns[$filters['sort_by'] ?? 'name'] ?? 'a.name';
         $order  = strtoupper($filters['sort_order'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
-        $limit  = max(1, min(100, (int)($filters['limit'] ?? 20)));
+        $limit  = max(1, min(500, (int)($filters['limit'] ?? 20)));
         $page   = max(1, (int)($filters['page']  ?? 1));
         $offset = ($page - 1) * $limit;
 
@@ -61,7 +82,8 @@ class Karigar {
         $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
         $stmt->bindValue(':off', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $items = array_map([self::class, 'formatRow'], $rows);
 
         return [
             'items'       => $items,
@@ -80,20 +102,32 @@ class Karigar {
             WHERE a.id = :id AND a.account_type = 'KARIGAR'");
         $stmt->execute([':id' => $id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ?: null;
+        return $row ? self::formatRow($row) : null;
     }
 
     public static function create(array $data): array {
         $pdo = Database::getConnection();
 
-        $name = trim((string)($data['name'] ?? ''));
-        $code = trim((string)($data['account_code'] ?? ''));
+        $name = trim((string)($data['karigar_name'] ?? $data['name'] ?? ''));
+        $code = trim((string)($data['karigar_code'] ?? $data['account_code'] ?? ''));
+        $mobile = trim((string)($data['mobile'] ?? ''));
+
         if ($name === '') throw new Exception('Karigar Name is required.');
         if ($code === '') throw new Exception('Karigar Code is required.');
+        if ($mobile !== '' && !preg_match('/^\d{10}$/', $mobile)) {
+            throw new Exception('Mobile number must be 10 digits.');
+        }
 
         $check = $pdo->prepare("SELECT id FROM accounts WHERE account_code = :code");
         $check->execute([':code' => $code]);
         if ($check->fetch()) throw new Exception('Karigar Code already exists. Please use a unique code.');
+
+        $isActive = 1;
+        if (isset($data['status'])) {
+            $isActive = strcasecmp((string)$data['status'], 'Inactive') === 0 ? 0 : 1;
+        } elseif (isset($data['is_active'])) {
+            $isActive = (int)(bool)$data['is_active'];
+        }
 
         $stmt = $pdo->prepare("INSERT INTO accounts
             (account_code, group_id, name, account_type, mobile, phone, email, address,
@@ -107,23 +141,25 @@ class Karigar {
         $stmt->execute([
             ':account_code'             => $code,
             ':name'                     => $name,
-            ':mobile'                   => trim((string)($data['mobile'] ?? '')),
-            ':phone'                    => trim((string)($data['phone'] ?? '')),
-            ':email'                    => trim((string)($data['email'] ?? '')),
+            ':mobile'                   => $mobile,
+            ':phone'                    => trim((string)($data['alternate_mobile'] ?? $data['phone'] ?? '')),
+            ':email'                    => trim((string)($data['email'] ?? $data['narration'] ?? '')),
             ':address'                  => trim((string)($data['address'] ?? '')),
             ':city'                     => trim((string)($data['city'] ?? '')),
             ':state'                    => trim((string)($data['state'] ?? 'Gujarat')),
-            ':balance_inr'              => (float)($data['balance_inr'] ?? 0),
-            ':balance_fine_gold'        => (float)($data['balance_fine_gold'] ?? 0),
-            ':balance_fine_silver'      => (float)($data['balance_fine_silver'] ?? 0),
-            ':default_labour_rate'      => (float)($data['default_labour_rate'] ?? 0),
-            ':permissible_loss_percent' => (float)($data['permissible_loss_percent'] ?? 0),
+            ':balance_inr'              => (float)($data['opening_amount'] ?? $data['balance_inr'] ?? 0),
+            ':balance_fine_gold'        => (float)($data['opening_gold_balance'] ?? $data['balance_fine_gold'] ?? 0),
+            ':balance_fine_silver'      => (float)($data['opening_silver_balance'] ?? $data['balance_fine_silver'] ?? 0),
+            ':default_labour_rate'      => (float)($data['opening_diamond_balance'] ?? $data['default_labour_rate'] ?? 0),
+            ':permissible_loss_percent' => (float)($data['opening_stone_balance'] ?? $data['permissible_loss_percent'] ?? 0),
             ':credit_days'              => (int)($data['credit_days'] ?? 0),
             ':credit_limit_inr'         => (float)($data['credit_limit_inr'] ?? 0),
-            ':is_active'                => isset($data['is_active']) ? (int)(bool)$data['is_active'] : 1,
+            ':is_active'                => $isActive,
         ]);
 
-        return self::getById((int)$pdo->lastInsertId());
+        $newId = (int)$pdo->lastInsertId();
+        try { \Services\PartyLedgerSync::syncAccount($newId); } catch (\Throwable $e) {}
+        return self::getById($newId);
     }
 
     public static function update(int $id, array $data): array {
@@ -131,44 +167,77 @@ class Karigar {
         $existing = self::getById($id);
         if (!$existing) throw new Exception('Karigar not found.');
 
-        if (!empty($data['account_code'])) {
+        // Validate name/code if provided in payload
+        if (array_key_exists('karigar_name', $data) || array_key_exists('name', $data)) {
+            $name = trim((string)($data['karigar_name'] ?? $data['name'] ?? ''));
+            if ($name === '') throw new Exception('Karigar Name is required.');
+        }
+        $codeVal = null;
+        if (array_key_exists('karigar_code', $data) || array_key_exists('account_code', $data)) {
+            $codeVal = trim((string)($data['karigar_code'] ?? $data['account_code'] ?? ''));
+            if ($codeVal === '') throw new Exception('Karigar Code is required.');
             $check = $pdo->prepare("SELECT id FROM accounts WHERE account_code = :code AND id != :id");
-            $check->execute([':code' => trim((string)$data['account_code']), ':id' => $id]);
+            $check->execute([':code' => $codeVal, ':id' => $id]);
             if ($check->fetch()) throw new Exception('Karigar Code already exists.');
         }
+        if (isset($data['mobile']) && trim((string)$data['mobile']) !== '' && !preg_match('/^\d{10}$/', trim((string)$data['mobile']))) {
+            throw new Exception('Mobile number must be 10 digits.');
+        }
+
+        // Normalize frontend aliases into canonical DB columns
+        $normalized = [];
+        if (array_key_exists('karigar_code', $data) || array_key_exists('account_code', $data)) {
+            $normalized['account_code'] = $codeVal;
+        }
+        if (array_key_exists('karigar_name', $data) || array_key_exists('name', $data)) {
+            $normalized['name'] = trim((string)($data['karigar_name'] ?? $data['name'] ?? ''));
+        }
+        if (array_key_exists('mobile', $data)) {
+            $normalized['mobile'] = trim((string)$data['mobile']);
+        }
+        if (array_key_exists('alternate_mobile', $data) || array_key_exists('phone', $data)) {
+            $normalized['phone'] = trim((string)($data['alternate_mobile'] ?? $data['phone'] ?? ''));
+        }
+        if (array_key_exists('email', $data) || array_key_exists('narration', $data)) {
+            $normalized['email'] = trim((string)($data['email'] ?? $data['narration'] ?? ''));
+        }
+        if (array_key_exists('address', $data)) $normalized['address'] = trim((string)$data['address']);
+        if (array_key_exists('city', $data))    $normalized['city'] = trim((string)$data['city']);
+        if (array_key_exists('state', $data))   $normalized['state'] = trim((string)$data['state']);
+        if (array_key_exists('opening_amount', $data) || array_key_exists('balance_inr', $data)) {
+            $normalized['balance_inr'] = (float)($data['opening_amount'] ?? $data['balance_inr'] ?? 0);
+        }
+        if (array_key_exists('opening_gold_balance', $data) || array_key_exists('balance_fine_gold', $data)) {
+            $normalized['balance_fine_gold'] = (float)($data['opening_gold_balance'] ?? $data['balance_fine_gold'] ?? 0);
+        }
+        if (array_key_exists('opening_silver_balance', $data) || array_key_exists('balance_fine_silver', $data)) {
+            $normalized['balance_fine_silver'] = (float)($data['opening_silver_balance'] ?? $data['balance_fine_silver'] ?? 0);
+        }
+        if (array_key_exists('opening_diamond_balance', $data) || array_key_exists('default_labour_rate', $data)) {
+            $normalized['default_labour_rate'] = (float)($data['opening_diamond_balance'] ?? $data['default_labour_rate'] ?? 0);
+        }
+        if (array_key_exists('opening_stone_balance', $data) || array_key_exists('permissible_loss_percent', $data)) {
+            $normalized['permissible_loss_percent'] = (float)($data['opening_stone_balance'] ?? $data['permissible_loss_percent'] ?? 0);
+        }
+        if (array_key_exists('credit_days', $data)) $normalized['credit_days'] = (int)$data['credit_days'];
+        if (array_key_exists('credit_limit_inr', $data)) $normalized['credit_limit_inr'] = (float)$data['credit_limit_inr'];
+        if (array_key_exists('status', $data)) {
+            $normalized['is_active'] = strcasecmp((string)$data['status'], 'Inactive') === 0 ? 0 : 1;
+        } elseif (array_key_exists('is_active', $data)) {
+            $normalized['is_active'] = (int)(bool)$data['is_active'];
+        }
+
+        if (empty($normalized)) throw new Exception('No fields to update.');
 
         $fields = [];
         $params = [':id' => $id];
-
-        $map = [
-            'account_code'             => ':account_code',
-            'name'                     => ':name',
-            'mobile'                   => ':mobile',
-            'phone'                    => ':phone',
-            'email'                    => ':email',
-            'address'                  => ':address',
-            'city'                     => ':city',
-            'state'                    => ':state',
-            'balance_inr'              => ':balance_inr',
-            'balance_fine_gold'        => ':balance_fine_gold',
-            'balance_fine_silver'      => ':balance_fine_silver',
-            'default_labour_rate'      => ':default_labour_rate',
-            'permissible_loss_percent' => ':permissible_loss_percent',
-            'credit_days'              => ':credit_days',
-            'credit_limit_inr'         => ':credit_limit_inr',
-            'is_active'                => ':is_active',
-        ];
-
-        foreach ($map as $col => $param) {
-            if (array_key_exists($col, $data)) {
-                $fields[] = "$col = $param";
-                $params[$param] = $data[$col];
-            }
+        foreach ($normalized as $col => $val) {
+            $fields[] = "$col = :$col";
+            $params[":$col"] = $val;
         }
 
-        if (empty($fields)) throw new Exception('No fields to update.');
-
         $pdo->prepare("UPDATE accounts SET " . implode(', ', $fields) . " WHERE id = :id AND account_type = 'KARIGAR'")->execute($params);
+        try { \Services\PartyLedgerSync::syncAccount($id); } catch (\Throwable $e) {}
         return self::getById($id);
     }
 

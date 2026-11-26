@@ -53,6 +53,10 @@ import { SilverRateModal } from './components/SilverRateModal';
 import { CategoryItemsModal } from './components/CategoryItemsModal';
 import { ItemModuleContainer } from './components/ItemModuleContainer';
 import { KarigarModulePage, KarigarAddPage, KarigarEditPage } from './components/karigar';
+import { AccountGroupListPage } from './components/accountGroup';
+import { LedgerListPage, LedgerFormPage, LedgerBookPage } from './components/ledger';
+import { AccountingVoucherListPage, AccountingVoucherForm, AccountingReportsPage, ReturnsPage } from './components/accounting';
+import type { AccountingVoucherType } from './types';
 import { InventoryPage } from './components/InventoryPage';
 import { InvoiceHistoryPage } from './components/InvoiceHistoryPage';
 import { ReportsPage } from './components/ReportsPage';
@@ -136,6 +140,16 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     '/party-ledgers': 'party-ledgers',
     '/invoice-history': 'invoice-history',
     '/reports': 'reports',
+    '/account-groups': 'account-groups',
+    '/ledger-master': 'ledger-master',
+    '/ledger/add': 'ledger-add',
+    '/accounting-vouchers': 'accounting-vouchers',
+    '/accounting-vouchers/receipt': 'voucher-receipt',
+    '/accounting-vouchers/payment': 'voucher-payment',
+    '/accounting-vouchers/contra': 'voucher-contra',
+    '/accounting-vouchers/journal': 'voucher-journal',
+    '/accounting-reports': 'accounting-reports',
+    '/returns': 'returns',
     '/scale-connection': 'scale-connection',
     '/settings': 'settings',
   };
@@ -193,6 +207,14 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
         tab = 'sale-register';
       } else if (location.pathname.startsWith('/karigar/edit/')) {
         tab = 'karigar-edit';
+      } else if (location.pathname.startsWith('/ledger/edit/')) {
+        tab = 'ledger-edit';
+      } else if (location.pathname.startsWith('/ledger/book/')) {
+        tab = 'ledger-book';
+      } else if (location.pathname.startsWith('/accounting-vouchers/view/')) {
+        tab = 'accounting-voucher-view';
+      } else if (location.pathname.startsWith('/accounting-vouchers/')) {
+        tab = 'accounting-vouchers';
       } else if (location.pathname === '/customers') {
         tab = 'customers';
       } else {
@@ -856,6 +878,133 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
 
       case 'customer-profit-report':
         return <CustomerProfitReportPage />;
+
+      case 'account-groups':
+        return (
+          <AccountGroupListPage
+            onBackToDashboard={() => {
+              setActiveSidebarTab('dashboard');
+              setActiveTopTab('dashboard');
+              navigate('/');
+            }}
+          />
+        );
+
+      case 'ledger-master':
+        return (
+          <LedgerListPage
+            onBackToDashboard={() => { setActiveSidebarTab('dashboard'); navigate('/'); }}
+            onAdd={() => { setActiveSidebarTab('ledger-add'); navigate('/ledger/add'); }}
+            onEdit={(id) => { setActiveSidebarTab('ledger-edit'); navigate(`/ledger/edit/${id}`); }}
+            onView={(id) => { setActiveSidebarTab('ledger-book'); navigate(`/ledger/book/${id}`); }}
+          />
+        );
+
+      case 'ledger-add':
+        return (
+          <LedgerFormPage
+            onBack={() => { setActiveSidebarTab('ledger-master'); navigate('/ledger-master'); }}
+            onSuccess={() => { setActiveSidebarTab('ledger-master'); navigate('/ledger-master'); }}
+          />
+        );
+
+      case 'ledger-edit': {
+        const idMatch = location.pathname.match(/\/ledger\/edit\/(\d+)/);
+        const ledgerId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <LedgerFormPage
+            ledgerId={ledgerId}
+            onBack={() => { setActiveSidebarTab('ledger-master'); navigate('/ledger-master'); }}
+            onSuccess={() => { setActiveSidebarTab('ledger-master'); navigate('/ledger-master'); }}
+          />
+        );
+      }
+
+      case 'ledger-book': {
+        const idMatch = location.pathname.match(/\/ledger\/book\/(\d+)/);
+        const ledgerId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <LedgerBookPage
+            ledgerId={ledgerId}
+            onBack={() => { setActiveSidebarTab('ledger-master'); navigate('/ledger-master'); }}
+          />
+        );
+      }
+
+      case 'accounting-vouchers':
+        return (
+          <AccountingVoucherListPage
+            onAdd={(type) => {
+              setActiveSidebarTab('accounting-vouchers');
+              navigate(`/accounting-vouchers/${type.toLowerCase()}`);
+            }}
+            onView={(id) => { navigate(`/accounting-vouchers/view/${id}`); }}
+            onBackToDashboard={() => { setActiveSidebarTab('dashboard'); navigate('/'); }}
+          />
+        );
+
+      case 'voucher-receipt':
+        return (
+          <AccountingVoucherForm
+            voucherType="RECEIPT"
+            onBack={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+            onSuccess={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+          />
+        );
+
+      case 'voucher-payment':
+        return (
+          <AccountingVoucherForm
+            voucherType="PAYMENT"
+            onBack={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+            onSuccess={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+          />
+        );
+
+      case 'voucher-contra':
+        return (
+          <AccountingVoucherForm
+            voucherType="CONTRA"
+            onBack={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+            onSuccess={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+          />
+        );
+
+      case 'voucher-journal':
+        return (
+          <AccountingVoucherForm
+            voucherType="JOURNAL"
+            onBack={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+            onSuccess={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+          />
+        );
+
+      case 'accounting-reports':
+        return (
+          <AccountingReportsPage
+            onBackToDashboard={() => { setActiveSidebarTab('dashboard'); navigate('/'); }}
+          />
+        );
+
+      case 'accounting-voucher-view': {
+        const idMatch = location.pathname.match(/\/accounting-vouchers\/view\/(\d+)/);
+        const vId = idMatch ? parseInt(idMatch[1], 10) : 0;
+        return (
+          <AccountingVoucherForm
+            voucherType="JOURNAL"
+            voucherId={vId}
+            onBack={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+            onSuccess={() => { setActiveSidebarTab('accounting-vouchers'); navigate('/accounting-vouchers'); }}
+          />
+        );
+      }
+
+      case 'returns':
+        return (
+          <ReturnsPage
+            onBackToDashboard={() => { setActiveSidebarTab('dashboard'); navigate('/'); }}
+          />
+        );
 
       case 'age-wise-list':
         return (

@@ -3,6 +3,7 @@ import { ArrowLeft, PackageCheck, Save, Plus, Trash2 } from 'lucide-react';
 import { createKarigarReceive, fetchKarigarReceiveFilterOptions } from '../../services/api';
 import type { KarigarReceiveItem } from '../../types';
 import { showErrorAlert } from '../../utils/alert';
+import { reqDate, reqSelect, reqText, focusFirstError, FieldErrors } from '../../utils/validation';
 
 interface Props { onBackToList: () => void; }
 
@@ -24,12 +25,13 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     fetchKarigarReceiveFilterOptions().then(d => {
       setKarigars(d.karigars);
       setOpenIssues(d.open_issues);
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const updateItem = (idx: number, field: keyof KarigarReceiveItem, val: string | number) => {
@@ -52,11 +54,11 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
   };
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
-  const addItem    = () => setItems(prev => [...prev, EMPTY_ITEM()]);
+  const addItem = () => setItems(prev => [...prev, EMPTY_ITEM()]);
 
   const totals = items.reduce((acc, it) => ({
     silver: acc.silver + (it.metal_type === 'SILVER' ? Number(it.fine_weight) : 0),
-    gold: acc.gold   + (it.metal_type === 'GOLD'   ? Number(it.fine_weight) : 0),
+    gold: acc.gold + (it.metal_type === 'GOLD' ? Number(it.fine_weight) : 0),
     amount: acc.amount + Number(it.labour_amount),
   }), { silver: 0, gold: 0, amount: 0 });
 
@@ -67,15 +69,31 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
       lot_no: iss?.lot_no ?? f.lot_no,
       karigar_name: iss?.karigar_name ?? f.karigar_name,
     }));
+    if (issueId) setFieldErrors(fe => { const n = { ...fe }; delete n.issue_id; return n; });
+  };
+
+  const validate = (): boolean => {
+    const errs: FieldErrors = {};
+    const dErr = reqDate(form.receive_date, 'Receive Date');
+    if (dErr) errs.receive_date = dErr;
+    const iErr = reqSelect(form.issue_id, 'an Issue reference');
+    if (iErr) errs.issue_id = iErr;
+    if (items.length === 0) errs.items = 'At least one item row is required.';
+    items.forEach((it, idx) => {
+      const nErr = reqText(it.item_name, 'Item Name');
+      if (nErr) errs[`item_${idx}_name`] = nErr;
+    });
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) { focusFirstError(); return false; }
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.issue_id) { setError('Please select an Issue reference.'); return; }
-    if (items.some(it => !it.item_name.trim())) { setError('All item rows must have an item name.'); return; }
+    if (saving || !validate()) return;
     try {
       setSaving(true); setError(''); setSuccess('');
-      await createKarigarReceive({ ...form, issue_id: Number(form.issue_id), karigar_id: Number(form.karigar_id), items } as any);
+      await createKarigarReceive({ ...form, issue_id: Number(form.issue_id), karigar_id: Number(form.karigar_id), items: items.map(it => ({ ...it, item_name: it.item_name.trim() })) } as any);
       setSuccess('Receive voucher created successfully!');
       setTimeout(onBackToList, 1000);
     } catch (e: any) {
@@ -112,8 +130,13 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Receive Date *</label>
-              <input type="date" value={form.receive_date} onChange={e => setForm(f => ({ ...f, receive_date: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="date" value={form.receive_date} onChange={e => {
+                const v = e.target.value;
+                setForm(f => ({ ...f, receive_date: v }));
+                if (v) setFieldErrors(fe => { const n = { ...fe }; delete n.receive_date; return n; });
+              }}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.receive_date ? 'border-rose-400' : 'border-slate-300'}`} />
+              {fieldErrors.receive_date && <div className="text-rose-600 text-xs mt-1">{fieldErrors.receive_date}</div>}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Voucher No (auto if blank)</label>
@@ -124,10 +147,11 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Issue Reference *</label>
               <select value={form.issue_id} onChange={e => handleIssueChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.issue_id ? 'border-rose-400' : 'border-slate-300'}`}>
                 <option value="">Select Open Issue</option>
                 {openIssues.map(i => <option key={i.id} value={i.id}>{i.voucher_no} – {i.karigar_name} {i.lot_no ? `(${i.lot_no})` : ''}</option>)}
               </select>
+              {fieldErrors.issue_id && <div className="text-rose-600 text-xs mt-1">{fieldErrors.issue_id}</div>}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Karigar</label>
@@ -197,17 +221,17 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.purity} step="0.01" min="0" max="100"
-        onChange={e => updateItem(idx, 'purity', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'purity', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.gross_weight} step="0.001" min="0"
-        onChange={e => updateItem(idx, 'gross_weight', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'gross_weight', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.net_weight} step="0.001" min="0"
-        onChange={e => updateItem(idx, 'net_weight', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'net_weight', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
@@ -216,12 +240,12 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.scrap_weight} step="0.001" min="0"
-        onChange={e => updateItem(idx, 'scrap_weight', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'scrap_weight', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.dust_weight} step="0.001" min="0"
-        onChange={e => updateItem(idx, 'dust_weight', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'dust_weight', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
@@ -230,12 +254,12 @@ export const KarigarReceiveAddPage: React.FC<Props> = ({ onBackToList }) => {
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.quantity} step="1" min="1"
-        onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                        onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">
                       <input type="number" value={it.labour_rate} step="0.01" min="0"
-        onChange={e => updateItem(idx, 'labour_rate', parseFloat(e.target.value) || 0)}
+                        onChange={e => updateItem(idx, 'labour_rate', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-right" />
                     </td>
                     <td className="px-2 py-1.5">

@@ -3,6 +3,8 @@ namespace Controllers;
 
 use Config\Database;
 use Services\AccountingEngine;
+use Services\PartyLedgerSync;
+use Services\VoucherAllocationService;
 use PDO;
 
 class AccountingVoucherController {
@@ -10,10 +12,9 @@ class AccountingVoucherController {
     /**
      * List all accounting vouchers (RECEIPT, PAYMENT, CONTRA, JOURNAL).
      */
-    public function list(): void {
+    public static function list(): void {
         $db = Database::getConnection();
-        $types = ['RECEIPT','PAYMENT','CONTRA','JOURNAL'];
-        $where = ["v.voucher_type IN ('RECEIPT','PAYMENT','CONTRA','JOURNAL')"];
+        $where = ["v.voucher_type IN ('RECEIPT','PAYMENT','CONTRA','JOURNAL')", "v.deleted_at IS NULL"];
         $params = [];
 
         if (!empty($_GET['voucher_type'])) {
@@ -61,8 +62,8 @@ class AccountingVoucherController {
         echo json_encode(['success' => true, 'data' => $rows, 'total' => $total, 'page' => $page, 'limit' => $limit]);
     }
 
-    public function view(): void {
-        $id = (int)($_GET['id'] ?? 0);
+    public static function view(int $id = 0): void {
+        if (!$id) $id = (int)($_GET['id'] ?? 0);
         if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'ID required']); return; }
 
         $db = Database::getConnection();
@@ -87,12 +88,28 @@ class AccountingVoucherController {
         $entries->execute(['id' => $id]);
         $voucher['entries'] = $entries->fetchAll(PDO::FETCH_ASSOC);
 
+        // Get invoice allocations
+        $allocs = $db->prepare("SELECT * FROM voucher_allocations WHERE voucher_id = :id ORDER BY id ASC");
+        $allocs->execute(['id' => $id]);
+        $voucher['allocations'] = $allocs->fetchAll(PDO::FETCH_ASSOC);
+
         echo json_encode(['success' => true, 'data' => $voucher]);
     }
 
-    public function getById(): void { $this->view(); }
+    public static function getById(int $id = 0): void { self::view($id); }
 
-    public function create(): void {
+    public static function openInvoices(): void {
+        $vtype = strtoupper($_GET['voucher_type'] ?? 'RECEIPT');
+        $accountId = (int)($_GET['account_id'] ?? 0);
+        if (!$accountId) {
+            echo json_encode(['success' => true, 'data' => []]);
+            return;
+        }
+        $invoices = VoucherAllocationService::getOpenInvoicesForParty($vtype, $accountId);
+        echo json_encode(['success' => true, 'data' => $invoices]);
+    }
+
+    public static function create(): void {
         $data = json_decode(file_get_contents('php://input'), true) ?? [];
         $voucherType = strtoupper($data['voucher_type'] ?? '');
         $allowedTypes = ['RECEIPT','PAYMENT','CONTRA','JOURNAL'];
@@ -101,50 +118,71 @@ class AccountingVoucherController {
             echo json_encode(['success' => false, 'message' => 'Invalid voucher type']);
             return;
         }
-
-        // Validate basic required fields
         if (empty($data['account_id'])) {
             http_response_code(422);
             echo json_encode(['success' => false, 'message' => 'Account is required']);
+            return;
+        }
+        $amount = (float)($data['amount'] ?? $data['net_amount'] ?? 0);
+        if ($amount <= 0 && empty($data['entries'])) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'message' => 'Amount must be greater than zero']);
             return;
         }
 
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
-            // Auto-generate voucher_no
             $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
             $stmt->execute(['vtype' => $voucherType]);
-            $lastNo = (int)$stmt->fetchColumn();
-            $nextNo = $lastNo + 1;
+            $nextNo = ((int)$stmt->fetchColumn()) + 1;
+
+            $vDate = $data['voucher_date'] ?? date('Y-m-d');
+            $paymentMode = strtoupper($data['payment_mode'] ?? 'CASH');
+            $series = substr($voucherType, 0, 3);
 
             $vStmt = $db->prepare("
                 INSERT INTO vouchers (voucher_no, series, branch_id, voucher_type, voucher_date,
-                    account_id, second_account_id, net_amount, narration, status, created_at, updated_at)
-                VALUES (:vno, :series, 1, :vtype, :vdate, :acc_id, :sec_acc_id, :amount, :narration, 'POSTED', NOW(), NOW())
+                    account_id, second_account_id, net_amount, payment_mode, narration, status, created_at, updated_at)
+                VALUES (:vno, :series, 1, :vtype, :vdate, :acc_id, :sec_acc_id, :amount, :pmode, :narration, 'POSTED', NOW(), NOW())
             ");
-            $series = substr($voucherType, 0, 3);
             $vStmt->execute([
-                'vno'       => $nextNo,
-                'series'    => $series,
-                'vtype'     => $voucherType,
-                'vdate'     => $data['voucher_date'] ?? date('Y-m-d'),
-                'acc_id'    => (int)$data['account_id'],
-                'sec_acc_id'=> $data['second_account_id'] ?? null,
-                'amount'    => (float)($data['amount'] ?? $data['net_amount'] ?? 0),
-                'narration' => $data['narration'] ?? null,
+                'vno'        => $nextNo,
+                'series'     => $series,
+                'vtype'      => $voucherType,
+                'vdate'      => $vDate,
+                'acc_id'     => (int)$data['account_id'],
+                'sec_acc_id' => !empty($data['second_account_id']) ? (int)$data['second_account_id'] : null,
+                'amount'     => $amount,
+                'pmode'      => $paymentMode,
+                'narration'  => $data['narration'] ?? null,
             ]);
             $voucherId = (int)$db->lastInsertId();
 
-            // Build journal entries if provided
+            // Post accounting entries
             if (!empty($data['entries']) && is_array($data['entries'])) {
-                AccountingEngine::post($voucherId, $voucherType, $data['voucher_date'] ?? date('Y-m-d'), $data['entries'], $data['narration'] ?? '');
-            } else {
-                // Auto-build simple entries for RECEIPT/PAYMENT/CONTRA
-                $entries = self::buildAutoEntries($voucherType, $data, $db);
-                if (!empty($entries)) {
-                    AccountingEngine::post($voucherId, $voucherType, $data['voucher_date'] ?? date('Y-m-d'), $entries, $data['narration'] ?? '');
+                $normalized = [];
+                foreach ($data['entries'] as $e) {
+                    $normalized[] = [
+                        'ledger_id' => (int)$e['ledger_id'],
+                        'debit'     => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
+                        'credit'    => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
+                        'narration' => $e['narration'] ?? ($data['narration'] ?? ''),
+                    ];
                 }
+                AccountingEngine::post($voucherId, $voucherType, $vDate, $normalized, $data['narration'] ?? '');
+            } else {
+                $entries = self::buildAutoEntries($voucherType, $data, $db);
+                if (empty($entries)) {
+                    throw new \Exception("Unable to build balanced accounting entries for {$voucherType}.");
+                }
+                AccountingEngine::post($voucherId, $voucherType, $vDate, $entries, $data['narration'] ?? '');
+            }
+
+            // Apply invoice allocations for RECEIPT / PAYMENT
+            if (in_array($voucherType, ['RECEIPT', 'PAYMENT'])) {
+                $allocations = is_array($data['allocations'] ?? null) ? $data['allocations'] : [];
+                VoucherAllocationService::applyAllocations($voucherId, $voucherType, (int)$data['account_id'], $amount, $allocations);
             }
 
             $db->commit();
@@ -156,34 +194,60 @@ class AccountingVoucherController {
         }
     }
 
-    public function update(): void {
-        $id = (int)($_GET['id'] ?? 0);
+    public static function update(int $id = 0): void {
         $data = json_decode(file_get_contents('php://input'), true) ?? [];
-        if (!$id) $id = (int)($data['id'] ?? 0);
+        if (!$id) $id = (int)($_GET['id'] ?? $data['id'] ?? 0);
         if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'ID required']); return; }
 
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
+            $curStmt = $db->prepare("SELECT voucher_type, voucher_date, account_id, net_amount FROM vouchers WHERE id = :id");
+            $curStmt->execute(['id' => $id]);
+            $v = $curStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$v) throw new \Exception('Voucher not found');
+
+            $voucherType = $v['voucher_type'];
+            $vDate = $data['voucher_date'] ?? $v['voucher_date'];
+            $accId = (int)($data['account_id'] ?? $v['account_id']);
+            $amount = (float)($data['amount'] ?? $data['net_amount'] ?? $v['net_amount']);
+            $paymentMode = strtoupper($data['payment_mode'] ?? 'CASH');
+
             $db->prepare("
                 UPDATE vouchers SET voucher_date=:vdate, account_id=:acc_id, second_account_id=:sec_acc_id,
-                    net_amount=:amount, narration=:narration, updated_at=NOW()
+                    net_amount=:amount, payment_mode=:pmode, narration=:narration, updated_at=NOW()
                 WHERE id=:id
             ")->execute([
-                'vdate'      => $data['voucher_date'] ?? date('Y-m-d'),
-                'acc_id'     => (int)$data['account_id'],
-                'sec_acc_id' => $data['second_account_id'] ?? null,
-                'amount'     => (float)($data['amount'] ?? $data['net_amount'] ?? 0),
+                'vdate'      => $vDate,
+                'acc_id'     => $accId,
+                'sec_acc_id' => !empty($data['second_account_id']) ? (int)$data['second_account_id'] : null,
+                'amount'     => $amount,
+                'pmode'      => $paymentMode,
                 'narration'  => $data['narration'] ?? null,
                 'id'         => $id,
             ]);
 
             if (!empty($data['entries']) && is_array($data['entries'])) {
-                // Get voucher type
-                $vtype = $db->prepare("SELECT voucher_type, voucher_date FROM vouchers WHERE id=:id");
-                $vtype->execute(['id' => $id]);
-                $v = $vtype->fetch(PDO::FETCH_ASSOC);
-                AccountingEngine::post($id, $v['voucher_type'], $data['voucher_date'] ?? $v['voucher_date'], $data['entries'], $data['narration'] ?? '');
+                $normalized = [];
+                foreach ($data['entries'] as $e) {
+                    $normalized[] = [
+                        'ledger_id' => (int)$e['ledger_id'],
+                        'debit'     => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
+                        'credit'    => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
+                        'narration' => $e['narration'] ?? ($data['narration'] ?? ''),
+                    ];
+                }
+                AccountingEngine::post($id, $voucherType, $vDate, $normalized, $data['narration'] ?? '');
+            } else {
+                $entries = self::buildAutoEntries($voucherType, array_merge($data, ['account_id' => $accId, 'amount' => $amount]), $db);
+                if (!empty($entries)) {
+                    AccountingEngine::post($id, $voucherType, $vDate, $entries, $data['narration'] ?? '');
+                }
+            }
+
+            if (in_array($voucherType, ['RECEIPT', 'PAYMENT'])) {
+                $allocations = is_array($data['allocations'] ?? null) ? $data['allocations'] : [];
+                VoucherAllocationService::applyAllocations($id, $voucherType, $accId, $amount, $allocations);
             }
 
             $db->commit();
@@ -195,17 +259,18 @@ class AccountingVoucherController {
         }
     }
 
-    public function delete(): void {
-        $id = (int)($_GET['id'] ?? 0);
+    public static function delete(int $id = 0): void {
+        if (!$id) $id = (int)($_GET['id'] ?? 0);
         if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'ID required']); return; }
 
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
             AccountingEngine::reverse($id);
-            $db->prepare("UPDATE vouchers SET status='CANCELLED', deleted_at=NOW() WHERE id=:id")->execute(['id' => $id]);
+            VoucherAllocationService::reverseAllocations($id);
+            $db->prepare("UPDATE vouchers SET status='CANCELLED', deleted_at=NOW(), unallocated_amount=0 WHERE id=:id")->execute(['id' => $id]);
             $db->commit();
-            echo json_encode(['success' => true, 'message' => 'Voucher cancelled']);
+            echo json_encode(['success' => true, 'message' => 'Voucher cancelled and allocations reversed']);
         } catch (\Exception $e) {
             $db->rollBack();
             http_response_code(422);
@@ -213,7 +278,7 @@ class AccountingVoucherController {
         }
     }
 
-    public function nextVoucherNo(): void {
+    public static function nextVoucherNo(): void {
         $vtype = strtoupper($_GET['voucher_type'] ?? 'RECEIPT');
         $db = Database::getConnection();
         $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
@@ -226,32 +291,37 @@ class AccountingVoucherController {
         $amount = (float)($data['amount'] ?? $data['net_amount'] ?? 0);
         if ($amount <= 0) return [];
 
-        // Find ledger IDs for account_id and second_account_id
-        $accLedger = self::getLedgerIdForAccount((int)$data['account_id'], $db);
-        $secLedger = !empty($data['second_account_id']) ? self::getLedgerIdForAccount((int)$data['second_account_id'], $db) : null;
+        $partyLedger = PartyLedgerSync::syncAccount((int)$data['account_id']);
+        if (!$partyLedger) return [];
 
-        if (!$accLedger) return []; // Can't auto-build without ledger
-
-        switch ($voucherType) {
-            case 'RECEIPT': // Dr Cash/Bank, Cr Customer
-                return [
-                    ['ledger_id' => $accLedger, 'debit' => $amount, 'credit' => 0, 'narration' => $data['narration'] ?? 'Receipt'],
-                    ['ledger_id' => $secLedger ?? $accLedger, 'debit' => 0, 'credit' => $amount, 'narration' => $data['narration'] ?? 'Receipt'],
-                ];
-            case 'PAYMENT': // Dr Supplier, Cr Cash/Bank
-                return [
-                    ['ledger_id' => $accLedger, 'debit' => $amount, 'credit' => 0, 'narration' => $data['narration'] ?? 'Payment'],
-                    ['ledger_id' => $secLedger ?? $accLedger, 'debit' => 0, 'credit' => $amount, 'narration' => $data['narration'] ?? 'Payment'],
-                ];
-            default:
-                return [];
+        $cashOrBankLedger = null;
+        if (!empty($data['second_account_id'])) {
+            $cashOrBankLedger = PartyLedgerSync::syncAccount((int)$data['second_account_id']);
         }
-    }
+        if (!$cashOrBankLedger) {
+            $pmode = strtoupper($data['payment_mode'] ?? 'CASH');
+            if (in_array($pmode, ['BANK', 'UPI', 'CHEQUE', 'BANK_TRANSFER'])) {
+                $cashOrBankLedger = PartyLedgerSync::getSystemLedger('Bank Account', 'Bank Accounts', 'ASSET');
+            } else {
+                $cashOrBankLedger = PartyLedgerSync::getSystemLedger('Cash in Hand', 'Cash in Hand', 'ASSET');
+            }
+        }
 
-    private static function getLedgerIdForAccount(int $accountId, $db): ?int {
-        $stmt = $db->prepare("SELECT id FROM ledgers WHERE account_ref_id = :id LIMIT 1");
-        $stmt->execute(['id' => $accountId]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? (int)$row['id'] : null;
+        $narr = $data['narration'] ?? $voucherType;
+        return match ($voucherType) {
+            'RECEIPT' => [
+                ['ledger_id' => $cashOrBankLedger, 'debit' => $amount, 'credit' => 0, 'narration' => $narr],
+                ['ledger_id' => $partyLedger,      'debit' => 0, 'credit' => $amount, 'narration' => $narr],
+            ],
+            'PAYMENT' => [
+                ['ledger_id' => $partyLedger,      'debit' => $amount, 'credit' => 0, 'narration' => $narr],
+                ['ledger_id' => $cashOrBankLedger, 'debit' => 0, 'credit' => $amount, 'narration' => $narr],
+            ],
+            'CONTRA' => [
+                ['ledger_id' => $cashOrBankLedger, 'debit' => $amount, 'credit' => 0, 'narration' => $narr],
+                ['ledger_id' => $partyLedger,      'debit' => 0, 'credit' => $amount, 'narration' => $narr],
+            ],
+            default => [],
+        };
     }
 }

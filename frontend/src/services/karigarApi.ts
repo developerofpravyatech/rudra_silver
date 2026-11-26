@@ -47,11 +47,31 @@ export async function fetchKarigarFilterOptions(): Promise<{ cities: string[]; s
   return json.data;
 }
 
+function mapKarigarData(data: Partial<KarigarRecord>): any {
+    return {
+      name: data.karigar_name,
+      account_code: data.karigar_code,
+      mobile: data.mobile,
+      phone: data.phone,
+      email: data.narration,
+      address: data.address,
+      city: data.city,
+      state: data.state,
+      balance_inr: data.balance_inr,
+      balance_fine_gold: data.balance_fine_gold,
+      balance_fine_silver: data.balance_fine_silver,
+      default_labour_rate: data.default_labour_rate,
+      permissible_loss_percent: data.permissible_loss_percent,
+      credit_days: data.credit_days,
+      is_active: data.is_active,
+    };
+  }
+
 export async function createKarigar(data: Partial<KarigarRecord>): Promise<KarigarRecord> {
   const res = await fetch('/api/karigar', {
     method: 'POST',
     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(mapKarigarData(data)),
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || 'Failed to create Karigar.');
@@ -62,7 +82,7 @@ export async function updateKarigar(id: number, data: Partial<KarigarRecord>): P
   const res = await fetch(`/api/karigar/${id}`, {
     method: 'PUT',
     headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(mapKarigarData(data)),
   });
   const json = await res.json();
   if (!res.ok) throw new Error(json.message || 'Failed to update Karigar.');

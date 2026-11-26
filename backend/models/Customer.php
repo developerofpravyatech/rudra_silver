@@ -317,6 +317,7 @@ class Customer {
         ]);
 
         $newId = (int)$db->lastInsertId();
+        try { \Services\PartyLedgerSync::resolveOrCreatePartyLedger($normalized['Name'], 'Sundry Debtors (Customers)'); } catch (\Throwable $e) {}
         return self::findById($newId);
     }
 

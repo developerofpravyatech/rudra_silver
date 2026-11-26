@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Search, Printer, ArrowLeft, CheckCircle2, Eye, Loader2 } from 'lucide-react';
+import { Clock, Search, Printer, ArrowLeft, CheckCircle2, Eye, Loader2, FileDown } from 'lucide-react';
 import { fetchInvoiceDetail, fetchRecentInvoices } from '../services/api';
+import { printInvoicePdf, downloadInvoicePdf } from '../utils/reportPdf';
 
 interface InvoiceHistoryPageProps {
   onBackToDashboard: () => void;
@@ -80,16 +81,21 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
     try {
       const targetId = getTargetId(inv);
       const invoiceData = await fetchInvoiceDetail(targetId);
-      const w = window.open('', '_blank');
-      if (w) {
-        w.document.write(`<pre style="font-family: monospace; padding: 20px;">${JSON.stringify(invoiceData, null, 2)}</pre>`);
-        w.document.close();
-        w.print();
-      }
-      setPrintSuccess(`Invoice ${inv.id} sent to print dialog.`);
+      printInvoicePdf(invoiceData);
+      setPrintSuccess(`Invoice ${inv.id} formatted for printing.`);
       setTimeout(() => setPrintSuccess(null), 3500);
     } catch (e) {
       alert('Failed to load invoice for printing.');
+    }
+  };
+
+  const handleDownloadPdf = async (inv: InvoiceRecord) => {
+    try {
+      const targetId = getTargetId(inv);
+      const invoiceData = await fetchInvoiceDetail(targetId);
+      downloadInvoicePdf(invoiceData);
+    } catch (e) {
+      alert('Failed to download invoice PDF.');
     }
   };
 
@@ -228,6 +234,13 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
                         <Printer className="w-3.5 h-3.5" />
                       </button>
                       <button
+                        onClick={() => handleDownloadPdf(inv)}
+                        className="p-1.5 rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition"
+                        title="Download Invoice PDF"
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         onClick={() => handleView(inv)}
                         className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] hover:border-amber-400 text-slate-600 hover:text-amber-700 dark:text-slate-400 dark:hover:text-amber-300 transition"
                         title="View Details"
@@ -249,7 +262,158 @@ export const InvoiceHistoryPage: React.FC<InvoiceHistoryPageProps> = ({ onBackTo
               <h3 className="font-bold text-sm">Invoice #{viewingInvoice.voucher_no || viewingInvoice.id}</h3>
               <button onClick={() => setViewingInvoice(null)} className="text-slate-500 hover:text-slate-900 dark:hover:text-white">✕</button>
             </div>
-            <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(viewingInvoice, null, 2)}</pre>
+
+            {/* A. Invoice Information Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Invoice Number</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.voucher_no || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.voucher_date ? new Date(viewingInvoice.voucher_date).toLocaleDateString() : '-'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Series</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.series || '-'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Voucher Type</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.voucher_type || '-'}</p>
+              </div>
+            </div>
+
+            {/* B. Customer / Supplier Information Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Customer / Supplier</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.account_name || 'Walk-in Customer'}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mobile</label>
+                <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.account_mobile || '-'}</p>
+              </div>
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Payment Mode</label>
+                  <p className="font-semibold text-slate-900 dark:text-white">{viewingInvoice.payment_mode || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                  {viewingInvoice.payment_status && (
+                    <p className={viewingInvoice.payment_status === 'PAID' ? 'text-emerald-600' : viewingInvoice.payment_status === 'PARTIAL' ? 'text-amber-600' : 'text-rose-600'} font-semibold>
+                      {viewingInvoice.payment_status}
+                    </p>
+                  )}
+                  {!viewingInvoice.payment_status && (
+                    <p className="font-semibold text-rose-600">Unpaid</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* C. Amount Summary Section */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Gross Amount</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.gross_amount).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Discount</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.discount_amount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Taxable Amount</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.taxable_amount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Net Amount</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.net_amount).toFixed(2)}</p>
+              </div>
+            </div>
+
+            {/* GST Breakdown */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">CGST</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.cgst_amount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">SGST</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.sgst_amount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">IGST</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.igst_amount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Round Off</label>
+                <p className="font-semibold text-slate-900 dark:text-white">₹{Number(viewingInvoice.round_off || 0).toFixed(2)}</p>
+              </div>
+            </div>
+
+            {/* D. Invoice Items Table */}
+            <div className="overflow-x-auto mb-6">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-slate-100 dark:bg-[#0b0e14] text-slate-700 dark:text-slate-400 font-semibold text-[10px] uppercase border-b border-slate-200 dark:border-white/[0.08]">
+                  <tr>
+                    <th className="p-3">Item</th>
+                    <th className="p-3 text-center">Metal Type</th>
+                    <th className="p-3 text-center">Qty</th>
+                    <th className="p-3 text-center">Gross Weight</th>
+                    <th className="p-3 text-center">Stone Weight</th>
+                    <th className="p-3 text-center">Net Weight</th>
+                    <th className="p-3 text-center">Purity</th>
+                    <th className="p-3 text-center">Rate (₹/g)</th>
+                    <th className="p-3 text-center">Metal Amount</th>
+                    <th className="p-3 text-center">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {viewingInvoice.items && viewingInvoice.items.length > 0 ? (
+                    viewingInvoice.items.map((item: any, index: number) => (
+                      <tr key={index} className="border-b border-slate-200 dark:border-white/[0.04] hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                        <td className="p-3 font-sans">{item.item_description || `Item ${index + 1}`}</td>
+                        <td className="p-3 text-center text-slate-500 dark:text-slate-400">{item.metal_type || '-'}</td>
+                        <td className="p-3 text-center text-slate-700 dark:text-slate-300">{item.pieces || 1}</td>
+                        <td className="p-3 text-center text-slate-700 dark:text-slate-300">{Number(item.gross_weight || 0).toFixed(3)} g</td>
+                        <td className="p-3 text-center text-slate-500 dark:text-slate-400">{Number(item.stone_weight || 0).toFixed(3)} g</td>
+                        <td className="p-3 text-center text-slate-700 dark:text-slate-300">{Number(item.net_weight || 0).toFixed(3)} g</td>
+                        <td className="p-3 text-center text-slate-500 dark:text-slate-400">{item.purity_touch || '-'}</td>
+                        <td className="p-3 text-center text-slate-700 dark:text-slate-300">₹{Number(item.metal_rate_per_gram || 0).toFixed(2)}</td>
+                        <td className="p-3 text-center font-bold text-slate-900 dark:text-white">₹{Number(item.total_item_amount || item.metal_amount || 0).toFixed(2)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={10} className="p-4 text-center text-slate-500 dark:text-slate-400">No items found</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* E. Payment Information Section (if payments exist) */}
+            {viewingInvoice.payments && viewingInvoice.payments.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                {viewingInvoice.payments.map((pay: any, idx: number) => (
+                  <div key={idx} className="p-3 rounded border border-slate-200 dark:border-white/[0.04]">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Payment {idx + 1}</label>
+                    <p className="font-semibold text-slate-900 dark:text-white">Mode: {pay.payment_mode || 'CASH'}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Amount: ₹{Number(pay.amount || 0).toFixed(2)}</p>
+                    {pay.reference_no && <p className="text-xs text-slate-500 dark:text-slate-400">Ref: {pay.reference_no}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* F. Additional Information - Narration */}
+            {viewingInvoice.narration && (
+              <div className="mt-6 p-3 rounded border border-slate-200 dark:border-white/[0.04]">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Narration</label>
+                <p className="text-sm text-slate-700 dark:text-slate-300">{viewingInvoice.narration}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

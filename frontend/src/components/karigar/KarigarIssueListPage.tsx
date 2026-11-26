@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, RefreshCw, Edit2, Trash2, ChevronLeft, ChevronRight, FileText, Package } from 'lucide-react';
+import { Search, Plus, RefreshCw, Edit2, Trash2, ChevronLeft, ChevronRight, FileText, Package, Printer, FileDown } from 'lucide-react';
 import { fetchKarigarIssues, fetchKarigarIssueFilterOptions, deleteKarigarIssue } from '../../services/api';
 import type { KarigarIssueRecord } from '../../types';
+import { printReport, downloadReportPdf, ReportPdfOptions } from '../../utils/reportPdf';
 
 interface Props {
   onNavigateAdd: () => void;
@@ -43,6 +44,40 @@ export const KarigarIssueListPage: React.FC<Props> = ({ onNavigateAdd, onNavigat
     try { await deleteKarigarIssue(r.id); load(); } catch (e: any) { alert(e.message); }
   };
 
+  const buildReportOptions = async (): Promise<ReportPdfOptions> => {
+    const res = await fetchKarigarIssues({ ...filters, page: 1, limit: 500 } as any);
+    return {
+      title: 'Karigar Issue Register',
+      filename: `Karigar_Issues_${new Date().toISOString().slice(0, 10)}.pdf`,
+      orientation: 'landscape',
+      filters: [
+        ...(filters.from_date ? [{ label: 'From', value: filters.from_date }] : []),
+        ...(filters.to_date ? [{ label: 'To', value: filters.to_date }] : []),
+        ...(filters.status ? [{ label: 'Status', value: filters.status }] : []),
+      ],
+      columns: [
+        { header: 'Voucher No', dataKey: 'voucher_no' },
+        { header: 'Date', dataKey: 'issue_date' },
+        { header: 'Karigar', dataKey: 'karigar_name' },
+        { header: 'Lot No', dataKey: 'lot_no' },
+        { header: 'Gold Fine(g)', dataKey: 'gf', align: 'right' },
+        { header: 'Silver Fine(g)', dataKey: 'sf', align: 'right' },
+        { header: 'Amount (INR)', dataKey: 'amt', align: 'right' },
+        { header: 'Status', dataKey: 'status', align: 'center' },
+      ],
+      data: res.items.map(i => ({
+        voucher_no: i.voucher_no,
+        issue_date: i.issue_date,
+        karigar_name: i.karigar_name || '—',
+        lot_no: i.lot_no || '—',
+        gf: Number(i.total_gold_fine || 0).toFixed(3),
+        sf: Number(i.total_silver_fine || 0).toFixed(3),
+        amt: Number(i.total_amount || 0).toFixed(2),
+        status: i.status,
+      })),
+    };
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#f4f6f9]">
       {/* Header */}
@@ -57,6 +92,12 @@ export const KarigarIssueListPage: React.FC<Props> = ({ onNavigateAdd, onNavigat
           </div>
         </div>
         <div className="flex gap-2">
+          <button onClick={async () => printReport(await buildReportOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+            <Printer className="w-3.5 h-3.5" /> Print
+          </button>
+          <button onClick={async () => downloadReportPdf(await buildReportOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+            <FileDown className="w-3.5 h-3.5" /> PDF
+          </button>
           <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>

@@ -1,4 +1,4 @@
-import { Account, InventoryTag, DailyRates, DailySummary, AuthUser, PaginatedUsers, ItemRecord, PaginatedItems, CategoryOption, CategoryRecord, PaginatedCategories, CategoryFilterParams, PurityStampOption, ItemFilterOptions, ItemFilterParams, StockItem, PaginatedStockItems, StockFilterParams, StockDropdownOptions, StockStatusRecord, PaginatedStockStatus, StockStatusFilterParams, MetalStockRecord, PaginatedMetalStock, MetalStockFilterParams, MetalStockFilterOptions, DailyBalanceRecord, PaginatedDailyBalance, DailyBalanceFilterParams, DailyBalanceFilterOptions, AccountLookupItem, CustomerRecord, PaginatedCustomers, CustomerFilterParams, DailyTransactionRecord, DailyTransactionTotals, PaginatedDailyTransactions, DailyTransactionFilterParams, DailyTransactionFilterOptions, SilverBullionRecord, PaginatedSilverBullion, SilverBullionFilterParams, SilverBullionFilterOptions, PurchaseRegisterRecord, PaginatedPurchaseRegister, PurchaseRegisterFilterParams, PurchaseRegisterFilterOptions, PurchaseRegisterSummary, SaleRegisterRecord, PaginatedSaleRegister, SaleRegisterFilterParams, SaleRegisterFilterOptions, SaleRegisterSummary, CustomerProfitFilterParams, CustomerProfitFilterOptions, PaginatedCustomerProfit, CustomerProfitSummary, CustomerProfitDetailedRecord, CustomerProfitVoucherRecord, AccountGroupItem, AgeWiseFilterOptions, AgeWiseFilterParams, PaginatedAgeWiseReport, AgeWiseLedgerResponse, KarigarRecord, KarigarFilterParams, PaginatedKarigars, KarigarIssueRecord, KarigarReceiveRecord, KarigarOutstandingRecord, KarigarIssueRecReport, KarigarLotReport, KarigarDiaStnBalance, KarigarDiaStnGroupBalance, KarigarDiaStnIssueRec } from '../types';
+import { Account, InventoryTag, DailyRates, DailySummary, AuthUser, PaginatedUsers, CreateVoucherPayload, ItemRecord, PaginatedItems, CategoryOption, CategoryRecord, PaginatedCategories, CategoryFilterParams, PurityStampOption, ItemFilterOptions, ItemFilterParams, StockItem, PaginatedStockItems, StockFilterParams, StockDropdownOptions, StockStatusRecord, PaginatedStockStatus, StockStatusFilterParams, MetalStockRecord, PaginatedMetalStock, MetalStockFilterParams, MetalStockFilterOptions, DailyBalanceRecord, PaginatedDailyBalance, DailyBalanceFilterParams, DailyBalanceFilterOptions, AccountLookupItem, CustomerRecord, PaginatedCustomers, CustomerFilterParams, DailyTransactionRecord, DailyTransactionTotals, PaginatedDailyTransactions, DailyTransactionFilterParams, DailyTransactionFilterOptions, SilverBullionRecord, PaginatedSilverBullion, SilverBullionFilterParams, SilverBullionFilterOptions, PurchaseRegisterRecord, PaginatedPurchaseRegister, PurchaseRegisterFilterParams, PurchaseRegisterFilterOptions, PurchaseRegisterSummary, SaleRegisterRecord, PaginatedSaleRegister, SaleRegisterFilterParams, SaleRegisterFilterOptions, SaleRegisterSummary, CustomerProfitFilterParams, CustomerProfitFilterOptions, PaginatedCustomerProfit, CustomerProfitSummary, CustomerProfitDetailedRecord, CustomerProfitVoucherRecord, AccountGroupItem, AgeWiseFilterOptions, AgeWiseFilterParams, PaginatedAgeWiseReport, AgeWiseLedgerResponse, KarigarRecord, KarigarFilterParams, PaginatedKarigars, KarigarIssueRecord, KarigarReceiveRecord, KarigarOutstandingRecord, KarigarIssueRecReport, KarigarLotReport, KarigarDiaStnBalance, KarigarDiaStnGroupBalance, KarigarDiaStnIssueRec } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -138,7 +138,7 @@ export async function calculateItem(params: {
   return await res.json();
 }
 
-export async function submitVoucher(payload: any) {
+export async function submitVoucher(payload: CreateVoucherPayload) {
   const res = await fetch(`${API_BASE}/vouchers`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -148,6 +148,52 @@ export async function submitVoucher(payload: any) {
     const err = await res.json();
     throw new Error(err.detail || 'Failed to submit voucher');
   }
+  return await res.json();
+}
+
+export async function fetchVoucherList(params: {
+  voucher_type?: string;
+  from_date?: string;
+  to_date?: string;
+  voucher_no?: number;
+  page?: number;
+  limit?: number;
+  search?: string;
+} = {}): Promise<{ items: any[]; total: number; page: number; limit: number }> {
+  const qs = new URLSearchParams();
+  if (params.voucher_type) qs.set('voucher_type', params.voucher_type);
+  if (params.from_date) qs.set('from_date', params.from_date);
+  if (params.to_date) qs.set('to_date', params.to_date);
+  if (params.voucher_no !== undefined) qs.set('voucher_no', String(params.voucher_no));
+  if (params.page !== undefined) qs.set('page', String(params.page));
+  if (params.limit !== undefined) qs.set('limit', String(params.limit));
+  if (params.search) qs.set('search', params.search);
+  const res = await fetch(`${API_BASE}/vouchers?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load vouchers');
+  return await res.json();
+}
+
+export async function fetchVoucherDetail(id: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/vouchers/${id}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load voucher');
+  return await res.json();
+}
+
+export async function fetchPreviousVoucher(id: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/vouchers/previous?id=${id}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load previous voucher');
+  return await res.json();
+}
+
+export async function fetchNextVoucher(id: number): Promise<any> {
+  const res = await fetch(`${API_BASE}/vouchers/next?id=${id}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load next voucher');
+  return await res.json();
+}
+
+export async function searchVouchers(query: string): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/vouchers/search?query=${encodeURIComponent(query)}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to search vouchers');
   return await res.json();
 }
 
@@ -2053,14 +2099,14 @@ export async function fetchKarigars(params: KarigarFilterParams): Promise<Pagina
   const res = await fetch(`/api/karigar?${qs.toString()}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error('Failed to load Karigar list.');
   const json = await res.json();
-  return json;
+  return json.data ?? json;
 }
 
 export async function fetchKarigarById(id: number): Promise<KarigarRecord> {
   const res = await fetch(`/api/karigar/${id}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error('Karigar not found.');
   const json = await res.json();
-  return json;
+  return json.data ?? json;
 }
 
 export async function fetchKarigarNextCode(): Promise<string> {
@@ -2074,7 +2120,7 @@ export async function fetchKarigarFilterOptions(): Promise<{ cities: string[]; k
   const res = await fetch('/api/karigar/filter-options', { headers: getAuthHeaders() });
   if (!res.ok) throw new Error('Failed to load filter options.');
   const json = await res.json();
-  return json;
+  return json.data ?? json;
 }
 
 export async function createKarigar(data: Partial<KarigarRecord>): Promise<KarigarRecord> {
@@ -2084,8 +2130,8 @@ export async function createKarigar(data: Partial<KarigarRecord>): Promise<Karig
     body: JSON.stringify(data),
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to create Karigar.');
-  return json;
+  if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to create Karigar.');
+  return json.data ?? json;
 }
 
 export async function updateKarigar(id: number, data: Partial<KarigarRecord>): Promise<KarigarRecord> {
@@ -2095,8 +2141,8 @@ export async function updateKarigar(id: number, data: Partial<KarigarRecord>): P
     body: JSON.stringify(data),
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to update Karigar.');
-  return json;
+  if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to update Karigar.');
+  return json.data ?? json;
 }
 
 export async function toggleKarigarStatus(id: number): Promise<KarigarRecord> {
@@ -2105,8 +2151,8 @@ export async function toggleKarigarStatus(id: number): Promise<KarigarRecord> {
     headers: getAuthHeaders(),
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.message || 'Failed to update status.');
-  return json;
+  if (!res.ok || json.success === false) throw new Error(json.message || 'Failed to update status.');
+  return json.data ?? json;
 }
 
 export async function deleteKarigar(id: number): Promise<void> {
@@ -2553,4 +2599,123 @@ export async function fetchBalanceSheet(asOn?: string): Promise<BalanceSheetResp
   if (!res.ok) throw new Error('Failed to load balance sheet.');
   const json = await res.json();
   return json.data;
+}
+
+// Helper used by AccountingVoucherForm
+export async function fetchAccountsForVoucher(): Promise<Array<{ id: number; name: string; account_type: string }>> {
+  const res = await fetch('/api/v1/accounts', { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load accounts.');
+  const json = await res.json();
+  return Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+}
+
+export async function exportLedgerCsv(id: number, from?: string, to?: string): Promise<void> {
+  const res = await fetch(`/api/ledger/export-csv?id=${id}${from ? `&from=${encodeURIComponent(from)}` : ''}${to ? `&to=${encodeURIComponent(to)}` : ''}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const json = await res.json();
+    throw new Error(json.message || 'Failed to export ledger CSV.');
+  }
+  // Return the blob for download
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ledger-${id}.csv`;
+  a.click();
+  window.URL.revokeObjectURL(url);
+}
+
+// -------------------------------------------------------------
+// Sales Return & Purchase Return
+// -------------------------------------------------------------
+export interface ReturnRecord {
+  id: number;
+  return_no: string;
+  return_date: string;
+  sale_register_id?: number | null;
+  purchase_register_id?: number | null;
+  original_voucher_no?: string | null;
+  party_name: string;
+  item_name: string;
+  metal_type: string;
+  return_pieces: number;
+  return_weight: number;
+  return_amount: number;
+  gst_amount: number;
+  total_amount: number;
+  refund_mode: string;
+  narration?: string | null;
+  status: 'POSTED' | 'CANCELLED';
+}
+
+export async function fetchSaleReturns(params?: Record<string, string>): Promise<ReturnRecord[]> {
+  const qs = new URLSearchParams(params || {});
+  const res = await fetch(`/api/sale-returns?${qs.toString()}`, { headers: getAuthHeaders() });
+  const json = await res.json();
+  return json.data || [];
+}
+
+export async function createSaleReturn(data: Partial<ReturnRecord>): Promise<any> {
+  const res = await fetch('/api/sale-returns', {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to record sale return.');
+  return json;
+}
+
+export async function deleteSaleReturn(id: number): Promise<void> {
+  const res = await fetch(`/api/sale-returns/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to cancel sale return.');
+}
+
+export async function fetchPurchaseReturns(params?: Record<string, string>): Promise<ReturnRecord[]> {
+  const qs = new URLSearchParams(params || {});
+  const res = await fetch(`/api/purchase-returns?${qs.toString()}`, { headers: getAuthHeaders() });
+  const json = await res.json();
+  return json.data || [];
+}
+
+export async function createPurchaseReturn(data: Partial<ReturnRecord>): Promise<any> {
+  const res = await fetch('/api/purchase-returns', {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to record purchase return.');
+  return json;
+}
+
+export async function deletePurchaseReturn(id: number): Promise<void> {
+  const res = await fetch(`/api/purchase-returns/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to cancel purchase return.');
+}
+
+// -------------------------------------------------------------
+// Invoice Allocations & Payment Status Reports
+// -------------------------------------------------------------
+import type { OpenInvoiceItem, InvoiceStatusReportRow } from '../types/accounting';
+
+export async function fetchOpenInvoicesForVoucher(voucherType: string, accountId: number): Promise<OpenInvoiceItem[]> {
+  if (!accountId) return [];
+  const qs = new URLSearchParams({ voucher_type: voucherType, account_id: String(accountId) });
+  const res = await fetch(`/api/accounting-vouchers/open-invoices?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function fetchInvoiceStatusReport(type: 'SALE' | 'PURCHASE', params?: Record<string, string>): Promise<InvoiceStatusReportRow[]> {
+  const qs = new URLSearchParams({ type, ...(params || {}) });
+  const res = await fetch(`/api/reports/invoice-status?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load invoice status report.');
+  const json = await res.json();
+  return Array.isArray(json.data) ? json.data : [];
 }

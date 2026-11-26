@@ -22,6 +22,9 @@ import {
   Receipt,
   ShoppingBag,
   UserPlus,
+  FileText,
+  PieChart,
+  Landmark,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -64,13 +67,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     'party-ledgers': '/party-ledgers',
     'invoice-history': '/invoice-history',
     reports: '/reports',
+    'account-groups': '/account-groups',
+    'ledger-master': '/ledger-master',
+    'accounting-vouchers': '/accounting-vouchers',
+    'accounting-reports': '/accounting-reports',
+    returns: '/returns',
     'scale-connection': '/scale-connection',
     settings: '/settings',
   };
 
-  const navItems = [
+  const navItems: Array<{ id: string; label: string; icon: any; badge?: string }> = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'new-billing', label: 'New Billing', icon: FilePlus2, badge: 'New', },
     { id: 'category-list', label: 'Categories', icon: Tags },
     { id: 'customers', label: 'Customers', icon: Contact },
     { id: 'stock-list', label: 'Stock List', icon: Package },
@@ -84,9 +91,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'age-wise-list', label: 'Age Wise List', icon: Clock },
     { id: 'item-master', label: 'Item Master', icon: Sparkles },
     { id: 'karigar', label: 'Karigar', icon: UserPlus },
-    { id: 'inventory', label: 'Inventory', icon: Box },
-    { id: 'party-ledgers', label: 'Ledgers', icon: BookOpen },
-    { id: 'invoice-history', label: 'Invoice History', icon: Clock },
+    { id: 'invoice-history', label: 'Invoice', icon: Clock },
+    { id: 'account-groups', label: 'Account Groups', icon: Layers },
+    { id: 'ledger-master', label: 'Ledger Master', icon: Landmark },
+    { id: 'accounting-vouchers', label: 'Vouchers', icon: FileText },
+    { id: 'returns', label: 'Sale/Pur Returns', icon: Receipt },
+    { id: 'accounting-reports', label: 'Acct Reports', icon: PieChart },
     { id: 'user-management', label: 'Users', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];

@@ -24,8 +24,21 @@ class DashboardController {
             $today = date('Y-m-d');
             $yesterday = date('Y-m-d', strtotime('-1 day'));
 
-            // Today's sales
-            $stmt = $db->prepare("SELECT COALESCE(SUM(net_amount),0) AS total, COUNT(id) AS cnt FROM vouchers WHERE voucher_type='SALE' AND voucher_date=:d");
+            // 1. Total Stock Value (INR) from stock_status + metal_stock
+            $stockStatusVal = (float)$db->query("SELECT COALESCE(SUM(total), 0) FROM stock_status")->fetchColumn();
+            $metalStockVal  = (float)$db->query("SELECT COALESCE(SUM(total), 0) FROM metal_stock")->fetchColumn();
+            $totalStockValue = $stockStatusVal + $metalStockVal;
+
+            // 2. Total Invoices (vouchers SALE + sale_register)
+            $vSaleCnt = (int)$db->query("SELECT COUNT(id) FROM vouchers WHERE voucher_type='SALE' AND deleted_at IS NULL")->fetchColumn();
+            $srSaleCnt = (int)$db->query("SELECT COUNT(id) FROM sale_register WHERE deleted_at IS NULL")->fetchColumn();
+            $totalInvoices = $vSaleCnt + $srSaleCnt;
+
+            // 3. Silver Bullion available weight (g)
+            $bullionWt = (float)$db->query("SELECT COALESCE(SUM(COALESCE(silver_cr, fine_cr, 0)) - SUM(COALESCE(silver_dr, fine_dr, 0)), 0) FROM silver_bullion")->fetchColumn();
+
+            // 4. Today's sales (for pct/overview)
+            $stmt = $db->prepare("SELECT COALESCE(SUM(net_amount),0) AS total, COUNT(id) AS cnt FROM vouchers WHERE voucher_type='SALE' AND deleted_at IS NULL AND voucher_date=:d");
             $stmt->execute(['d' => $today]);
             $todayRow = $stmt->fetch(PDO::FETCH_ASSOC);
             $stmt->execute(['d' => $yesterday]);
@@ -44,7 +57,7 @@ class DashboardController {
                 SELECT COALESCE(SUM(vi.fine_weight),0) AS w
                 FROM voucher_items vi
                 JOIN vouchers v ON v.id = vi.voucher_id
-                WHERE v.voucher_type='SALE' AND v.voucher_date=:d
+                WHERE v.voucher_type='SALE' AND v.deleted_at IS NULL AND v.voucher_date=:d
             ");
             $stmt->execute(['d' => $today]);
             $todaySilver = (float)$stmt->fetchColumn();
@@ -60,14 +73,16 @@ class DashboardController {
             $ratePct = $prevRate > 0 ? (($currentRate - $prevRate) / $prevRate) * 100 : 0;
 
             Response::json([
-                'today_sales' => $todaySales,
-                'today_sales_pct' => round($salesPct, 1),
-                'total_invoices' => $todayCount,
-                'total_invoices_pct' => round($countPct, 1),
-                'silver_sold' => round($todaySilver, 2),
-                'silver_sold_pct' => round($silverPct, 1),
-                'silver_rate' => round($currentRate, 2),
-                'silver_rate_pct' => round($ratePct, 1),
+                'total_stock_value'     => round($totalStockValue, 2),
+                'silver_bullion_weight' => round($bullionWt, 2),
+                'today_sales'           => $todaySales,
+                'today_sales_pct'       => round($salesPct, 1),
+                'total_invoices'        => $totalInvoices,
+                'total_invoices_pct'    => round($countPct, 1),
+                'silver_sold'           => round($todaySilver, 2),
+                'silver_sold_pct'       => round($silverPct, 1),
+                'silver_rate'           => round($currentRate, 2),
+                'silver_rate_pct'       => round($ratePct, 1),
             ]);
         } catch (\Exception $e) {
             Response::json(['error' => $e->getMessage()], 500);

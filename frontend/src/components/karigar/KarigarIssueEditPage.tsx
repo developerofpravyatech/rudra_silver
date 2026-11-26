@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Package, Save, Plus, Trash2 } from 'lucide-react';
 import { fetchKarigarIssueById, updateKarigarIssue, fetchKarigarIssueFilterOptions } from '../../services/api';
 import type { KarigarIssueItem } from '../../types';
+import { reqDate, reqSelect, reqText, focusFirstError, FieldErrors } from '../../utils/validation';
 
 interface Props {
   recordId: number;
@@ -24,6 +25,7 @@ export const KarigarIssueEditPage: React.FC<Props> = ({ recordId, onBackToList }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     fetchKarigarIssueFilterOptions().then(d => setKarigars(d.karigars)).catch(() => {});
@@ -76,15 +78,31 @@ export const KarigarIssueEditPage: React.FC<Props> = ({ recordId, onBackToList }
   const handleKarigarChange = (id: string) => {
     const k = karigars.find(k => String(k.id) === id);
     setForm(f => ({ ...f, karigar_id: id, karigar_name: k?.name ?? '' }));
+    if (id) setFieldErrors(fe => { const n = { ...fe }; delete n.karigar_id; return n; });
+  };
+
+  const validate = (): boolean => {
+    const errs: FieldErrors = {};
+    const dErr = reqDate(form.issue_date, 'Issue Date');
+    if (dErr) errs.issue_date = dErr;
+    const kErr = reqSelect(form.karigar_id, 'a Karigar');
+    if (kErr) errs.karigar_id = kErr;
+    if (items.length === 0) errs.items = 'At least one item row is required.';
+    items.forEach((it, idx) => {
+      const nErr = reqText(it.item_name, 'Item Name');
+      if (nErr) errs[`item_${idx}_name`] = nErr;
+    });
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) { focusFirstError(); return false; }
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.karigar_id) { setError('Please select a Karigar.'); return; }
-    if (items.some(it => !it.item_name.trim())) { setError('All item rows must have an item name.'); return; }
+    if (saving || !validate()) return;
     try {
       setSaving(true); setError(''); setSuccess('');
-      await updateKarigarIssue(recordId, { ...form, karigar_id: Number(form.karigar_id), items } as any);
+      await updateKarigarIssue(recordId, { ...form, karigar_id: Number(form.karigar_id), items: items.map(it => ({ ...it, item_name: it.item_name.trim() })) } as any);
       setSuccess('Issue voucher updated successfully!');
       setTimeout(onBackToList, 1000);
     } catch (e: any) { setError(e.message); }

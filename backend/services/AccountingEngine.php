@@ -65,6 +65,54 @@ class AccountingEngine {
     }
 
     /**
+     * Post balanced double-entry records for non-voucher transactions (SaleRegister, PurchaseRegister, Returns).
+     */
+    public static function postReference(string $refType, int $refId, string $postingDate, array $entries, string $narration = ''): void {
+        $normalized = [];
+        foreach ($entries as $e) {
+            $normalized[] = [
+                'ledger_id' => (int)$e['ledger_id'],
+                'debit'     => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
+                'credit'    => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
+                'narration' => $e['narration'] ?? $narration,
+            ];
+        }
+        self::validateEntries($normalized);
+        $db = Database::getConnection();
+
+        $db->prepare("DELETE FROM ledger_postings WHERE reference_type = :rt AND reference_id = :rid")
+           ->execute(['rt' => $refType, 'rid' => $refId]);
+
+        $stmt = $db->prepare("
+            INSERT INTO ledger_postings (ledger_id, voucher_id, reference_type, reference_id, debit, credit,
+                running_balance, balance_type, posting_date, narration, is_opening, created_at)
+            VALUES (:lid, NULL, :rt, :rid, :dr, :cr, 0, 'DR', :pdate, :narr, 0, NOW())
+        ");
+
+        foreach ($normalized as $entry) {
+            if ($entry['debit'] == 0 && $entry['credit'] == 0) continue;
+            $stmt->execute([
+                'lid'   => $entry['ledger_id'],
+                'rt'    => $refType,
+                'rid'   => $refId,
+                'dr'    => $entry['debit'],
+                'cr'    => $entry['credit'],
+                'pdate' => $postingDate,
+                'narr'  => $entry['narration'],
+            ]);
+        }
+    }
+
+    /**
+     * Reverse postings by reference_type + reference_id.
+     */
+    public static function reverseReference(string $refType, int $refId): void {
+        $db = Database::getConnection();
+        $db->prepare("DELETE FROM ledger_postings WHERE reference_type = :rt AND reference_id = :rid")
+           ->execute(['rt' => $refType, 'rid' => $refId]);
+    }
+
+    /**
      * Get current balance for a ledger as of a date.
      * Returns ['balance' => float, 'type' => 'DR'|'CR']
      */

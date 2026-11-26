@@ -3,6 +3,7 @@ import { ArrowLeft, Package, Save, Plus, Trash2 } from 'lucide-react';
 import { createKarigarIssue, fetchKarigarIssueFilterOptions } from '../../services/api';
 import type { KarigarIssueItem } from '../../types';
 import { showErrorAlert } from '../../utils/alert';
+import { reqDate, reqSelect, reqText, nonNegNum, focusFirstError, FieldErrors } from '../../utils/validation';
 
 interface Props { onBackToList: () => void; }
 
@@ -22,6 +23,7 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     fetchKarigarIssueFilterOptions().then(d => setKarigars(d.karigars)).catch(() => {});
@@ -42,6 +44,9 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
       updated[idx] = it;
       return updated;
     });
+    if (field === 'item_name' && String(val).trim()) {
+      setFieldErrors(fe => { const n = { ...fe }; delete n[`item_${idx}_name`]; return n; });
+    }
   };
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx));
@@ -53,13 +58,39 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
     amount: acc.amount + Number(it.labour_amount),
   }), { silver: 0, gold: 0, amount: 0 });
 
+  const validate = (): boolean => {
+    const errs: FieldErrors = {};
+    const dErr = reqDate(form.issue_date, 'Issue Date');
+    if (dErr) errs.issue_date = dErr;
+    const kErr = reqSelect(form.karigar_id, 'a Karigar');
+    if (kErr) errs.karigar_id = kErr;
+    if (items.length === 0) errs.items = 'At least one item row is required.';
+    items.forEach((it, idx) => {
+      const nErr = reqText(it.item_name, 'Item Name');
+      if (nErr) errs[`item_${idx}_name`] = nErr;
+      const wErr = nonNegNum(it.net_weight, 'Net weight');
+      if (wErr) errs[`item_${idx}_net`] = wErr;
+    });
+    setFieldErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      focusFirstError();
+      return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.karigar_id) { setError('Please select a Karigar.'); return; }
-    if (items.some(it => !it.item_name.trim())) { setError('All item rows must have an item name.'); return; }
+    if (saving || !validate()) return;
     try {
       setSaving(true); setError(''); setSuccess('');
-      await createKarigarIssue({ ...form, karigar_id: Number(form.karigar_id), items } as any);
+      await createKarigarIssue({
+        ...form,
+        voucher_no: form.voucher_no.trim(),
+        lot_no: form.lot_no.trim(),
+        karigar_id: Number(form.karigar_id),
+        items: items.map(it => ({ ...it, item_name: it.item_name.trim() })),
+      } as any);
       setSuccess('Issue voucher created successfully!');
       setTimeout(onBackToList, 1000);
     } catch (e: any) {
@@ -71,6 +102,7 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
   const handleKarigarChange = (id: string) => {
     const k = karigars.find(k => String(k.id) === id);
     setForm(f => ({ ...f, karigar_id: id, karigar_name: k?.name ?? '' }));
+    if (id) setFieldErrors(fe => { const n = { ...fe }; delete n.karigar_id; return n; });
   };
 
   return (
@@ -101,8 +133,13 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Issue Date *</label>
-              <input type="date" value={form.issue_date} onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="date" value={form.issue_date} onChange={e => {
+                  const v = e.target.value;
+                  setForm(f => ({ ...f, issue_date: v }));
+                  if (v) setFieldErrors(fe => { const n = { ...fe }; delete n.issue_date; return n; });
+                }}
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.issue_date ? 'border-rose-400' : 'border-slate-300'}`} />
+              {fieldErrors.issue_date && <div className="text-rose-600 text-xs mt-1">{fieldErrors.issue_date}</div>}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Voucher No (auto if blank)</label>
@@ -113,10 +150,11 @@ export const KarigarIssueAddPage: React.FC<Props> = ({ onBackToList }) => {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Karigar *</label>
               <select value={form.karigar_id} onChange={e => handleKarigarChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.karigar_id ? 'border-rose-400' : 'border-slate-300'}`}>
                 <option value="">Select Karigar</option>
                 {karigars.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
               </select>
+              {fieldErrors.karigar_id && <div className="text-rose-600 text-xs mt-1">{fieldErrors.karigar_id}</div>}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Lot No</label>

@@ -72,6 +72,83 @@ export interface BillingItem {
   huidNumber?: string;
 }
 
+export interface VoucherTypeOptions {
+  receipt: 'RECEIPT' | 'F2';
+  payment: 'PAYMENT' | 'F5';
+  contra: 'CONTRA' | 'F3';
+  journal: 'JOURNAL' | 'F4';
+}
+
+export interface VoucherCommonFields {
+  voucher_date: string;
+  voucher_series: string;
+  site: string;
+  voucher_type: keyof VoucherTypeOptions;
+  ledger_party_name: string;
+  sub_account?: string;
+  current_ledger_balance: number;
+  debit_amount: number;
+  credit_amount: number;
+  narration: string;
+  common_narration: string;
+  total_debit: number;
+  total_credit: number;
+  difference: number;
+  closing_balance: number;
+}
+
+export interface VoucherLineItem {
+  id?: number;
+  tag_id?: number;
+  item_id: number;
+  purity_stamp_id: number;
+  item_description: string;
+  pieces: number;
+  gross_weight: number;
+  less_weight: number;
+  net_weight: number;
+  purity_touch: number;
+  wastage_percent: number;
+  fine_weight: number;
+  metal_rate_per_gram: number;
+  metal_amount: number;
+  labour_rate: number;
+  labour_amount: number;
+  stone_amount: number;
+  total_item_amount: number;
+  huid_number?: string;
+}
+
+export interface PaymentSplit {
+  id?: number;
+  payment_mode: 'CASH' | 'BANK_TRANSFER' | 'CHEQUE' | 'UPI' | 'POS_CARD' | 'OLD_METAL_EXCHANGE';
+  amount: number;
+  reference_no?: string;
+  bank_name?: string;
+  metal_exchange_grams?: number;
+}
+
+export interface JournalEntry {
+  ledger_id: number;
+  debit: number;
+  credit: number;
+  narration?: string;
+}
+
+export interface CreateVoucherPayload {
+  voucher_date: string;
+  voucher_series?: string;
+  site?: string;
+  voucher_type: keyof VoucherTypeOptions | string;
+  account_id: number;
+  sub_account?: number;
+  items: any[];
+  payments?: PaymentSplit[];
+  narration?: string;
+  common_narration?: string;
+  [key: string]: any;
+}
+
 export interface AuthUser {
   id: number;
   name: string;

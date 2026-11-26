@@ -20,6 +20,13 @@ export interface KarigarRecord {
   credit_days: number;
   narration?: string | null;
   status: string;
+  phone?: string | null;
+  balance_inr?: number;
+  balance_fine_gold?: number;
+  balance_fine_silver?: number;
+  default_labour_rate?: number;
+  permissible_loss_percent?: number;
+  is_active?: boolean | number;
   created_at?: string;
   updated_at?: string;
 }

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, Plus, RefreshCw, Download, Edit2, Trash2, Loader2,
+  Search, Plus, RefreshCw, Download, Edit2, Trash2, Loader2, Printer, FileDown,
   Power, Users2, ChevronLeft, ChevronRight,
   MapPin, Phone, Coins
 } from 'lucide-react';
+import { printReport, downloadReportPdf, ReportPdfOptions } from '../../utils/reportPdf';
 import {
   fetchKarigars, fetchKarigarFilterOptions,
   toggleKarigarStatus, deleteKarigar,
@@ -84,6 +85,39 @@ export const KarigarListPage: React.FC<Props> = ({ onNavigateAdd, onNavigateEdit
     window.open(`/api/karigar/export?${params.toString()}`, '_blank');
   };
 
+  const buildReportOptions = async (): Promise<ReportPdfOptions> => {
+    const res = await fetchKarigars({ ...filters, page: 1, limit: 500 });
+    return {
+      title: 'Karigar Master List',
+      filename: `Karigar_Master_${new Date().toISOString().slice(0, 10)}.pdf`,
+      orientation: 'landscape',
+      filters: [
+        ...(filters.search ? [{ label: 'Search', value: filters.search }] : []),
+        ...(filters.city ? [{ label: 'City', value: filters.city }] : []),
+      ],
+      columns: [
+        { header: 'Code', dataKey: 'account_code' },
+        { header: 'Karigar Name', dataKey: 'name' },
+        { header: 'Mobile', dataKey: 'mobile' },
+        { header: 'City', dataKey: 'city' },
+        { header: 'Fine Silver(g)', dataKey: 'silver', align: 'right' },
+        { header: 'Fine Gold(g)', dataKey: 'gold', align: 'right' },
+        { header: 'Balance (INR)', dataKey: 'bal', align: 'right' },
+        { header: 'Status', dataKey: 'status', align: 'center' },
+      ],
+      data: res.items.map(k => ({
+        account_code: k.karigar_code,
+        name: k.karigar_name,
+        mobile: k.mobile || '—',
+        city: k.city || '—',
+        silver: Number(k.opening_silver_balance || 0).toFixed(3),
+        gold: Number(k.opening_gold_balance || 0).toFixed(3),
+        bal: Number(k.opening_amount || 0).toFixed(2),
+        status: k.status,
+      })),
+    };
+  };
+
   const setPage = (p: number) => setFilters(f => ({ ...f, page: p }));
 
   return (
@@ -100,6 +134,12 @@ export const KarigarListPage: React.FC<Props> = ({ onNavigateAdd, onNavigateEdit
           </div>
         </div>
         <div className="flex gap-2">
+          <button onClick={async () => printReport(await buildReportOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+            <Printer className="w-3.5 h-3.5" /> Print
+          </button>
+          <button onClick={async () => downloadReportPdf(await buildReportOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+            <FileDown className="w-3.5 h-3.5" /> PDF
+          </button>
           <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>

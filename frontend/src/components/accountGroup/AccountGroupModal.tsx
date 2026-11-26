@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, AlertCircle } from 'lucide-react';
 import type { AccountGroup, AccountNature } from '../../types';
 import { createAccountGroup, updateAccountGroup } from '../../services/api';
+import { reqText, reqSelect, FieldErrors } from '../../utils/validation';
 
 interface Props {
   isOpen: boolean;
@@ -26,6 +27,7 @@ export const AccountGroupModal: React.FC<Props> = ({
   const [isActive, setIsActive] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     if (groupToEdit) {
@@ -44,16 +46,24 @@ export const AccountGroupModal: React.FC<Props> = ({
       setIsActive(true);
     }
     setError(null);
+    setFieldErrors({});
   }, [groupToEdit, isOpen]);
 
   if (!isOpen) return null;
 
+  const validate = (): boolean => {
+    const errs: FieldErrors = {};
+    const nErr = reqText(name, 'Group Name', 2, 100);
+    if (nErr) errs.name = nErr;
+    const natErr = reqSelect(nature, 'Account Nature');
+    if (natErr) errs.nature = natErr;
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) {
-      setError('Group name is required.');
-      return;
-    }
+    if (loading || !validate()) return;
 
     setLoading(true);
     setError(null);
@@ -98,7 +108,7 @@ export const AccountGroupModal: React.FC<Props> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-4">
           {error && (
             <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -112,12 +122,16 @@ export const AccountGroupModal: React.FC<Props> = ({
             </label>
             <input
               type="text"
-              required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setName(v);
+                if (v.trim().length >= 2) setFieldErrors(fe => { const n = { ...fe }; delete n.name; return n; });
+              }}
               placeholder="e.g. Current Assets, Sundry Debtors"
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
+              className={`w-full px-3.5 py-2 rounded-xl border bg-slate-50 dark:bg-white/5 text-slate-900 dark:text-slate-100 text-sm focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 ${fieldErrors.name ? 'border-rose-400' : 'border-slate-200 dark:border-white/10'}`}
             />
+            {fieldErrors.name && <p className="text-rose-500 text-xs mt-1">{fieldErrors.name}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

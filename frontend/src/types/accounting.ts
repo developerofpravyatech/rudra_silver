@@ -142,3 +142,34 @@ export interface BalanceSheetResponse {
   total_liabilities: number;
   is_balanced: boolean;
 }
+
+export interface OpenInvoiceItem {
+  invoice_source: 'SALE_REGISTER' | 'PURCHASE_REGISTER' | 'VOUCHER';
+  invoice_id: number;
+  voucher_no: string;
+  voucher_date: string;
+  party_name: string;
+  particulars: string;
+  total_amount: number;
+  paid_amount: number;
+  outstanding_amount: number;
+  payment_status: 'UNPAID' | 'PARTIAL' | 'PAID';
+}
+
+export interface VoucherAllocationInput {
+  invoice_source: 'SALE_REGISTER' | 'PURCHASE_REGISTER' | 'VOUCHER';
+  invoice_id: number;
+  allocated_amount: number;
+}
+
+export interface InvoiceStatusReportRow extends OpenInvoiceItem {
+  allocations?: Array<{
+    allocated_amount: number;
+    voucher_id: number;
+    voucher_no: number;
+    series: string;
+    voucher_type: string;
+    voucher_date: string;
+    payment_mode?: string;
+  }>;
+}

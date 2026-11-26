@@ -260,13 +260,7 @@ export const PosBillingModal: React.FC<PosBillingModalProps> = ({
           stone_amount: itm.stoneAmount,
           total_amount: itm.totalItemAmount,
         })),
-        settlements: [
-          {
-            payment_mode: paymentMode,
-            amount: netTotal - settledCash,
-            metal_exchange_grams: settledFineSilver,
-          },
-        ],
+        settlements: [],
       };
 
       const res = await submitVoucher(payload);
@@ -579,40 +573,16 @@ export const PosBillingModal: React.FC<PosBillingModalProps> = ({
 
         {/* Bottom Settlement & Totals Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-          <div className="bg-slate-50 dark:bg-[#141822] p-4 rounded-xl border border-slate-200 dark:border-white/[0.08] space-y-3">
-            <h4 className="font-semibold text-slate-800 dark:text-slate-200">Payment &amp; Settlement</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-600 dark:text-slate-400 text-[11px] mb-1">
-                  Payment Mode
-                </label>
-                <select
-                  value={paymentMode}
-                  onChange={(e) => setPaymentMode(e.target.value as any)}
-                  className="w-full p-2 bg-white dark:bg-[#0b0e14] border border-slate-300 dark:border-white/[0.08] rounded text-xs text-slate-900 dark:text-white"
-                >
-                  <option value="CASH">Cash</option>
-                  <option value="UPI">UPI / QR Code</option>
-                  <option value="BANK_TRANSFER">Bank Transfer</option>
-                  <option value="OLD_METAL_EXCHANGE">Old Metal Return</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-slate-600 dark:text-slate-400 text-[11px] mb-1">
-                  Fine Silver Settle (g)
-                </label>
-                <input
-                  type="number"
-                  step="0.001"
-                  placeholder="0.000"
-                  value={settledFineSilver || ''}
-                  onChange={(e) =>
-                    setSettledFineSilver(parseFloat(e.target.value) || 0)
-                  }
-                  className="w-full p-2 bg-white dark:bg-[#0b0e14] border border-slate-300 dark:border-white/[0.08] rounded text-right font-mono text-slate-900 dark:text-white text-xs"
-                />
-              </div>
+          <div className="bg-slate-50 dark:bg-[#141822] p-4 rounded-xl border border-slate-200 dark:border-white/[0.08] space-y-2 flex flex-col justify-center">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-slate-800 dark:text-slate-200">Invoice Payment Status</h4>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300">
+                UNPAID (CREDIT)
+              </span>
             </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              Separate Billing &amp; Payment Workflow: Saving this invoice debits the customer ledger with the full amount (Paid = ₹0, Outstanding = ₹{netTotal.toFixed(2)}). Record customer payments separately via <strong>Vouchers → Receipt (F2)</strong>.
+            </p>
           </div>
 
           <div className="luxury-card-gold p-4 rounded-xl flex flex-col justify-between">

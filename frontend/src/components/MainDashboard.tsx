@@ -11,9 +11,10 @@ import {
   Box,
   BarChart3,
   Loader2,
+  Eye,
 } from 'lucide-react';
 import { DailyRates } from '../types';
-import { fetchSalesOverview, fetchDashboardSummary, fetchRecentInvoices } from '../services/api';
+import { fetchSalesOverview, fetchDashboardSummary, fetchRecentInvoices, fetchInvoiceDetail } from '../services/api';
 
 interface MainDashboardProps {
   rates: DailyRates | null;
@@ -40,6 +41,31 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const [salesError, setSalesError] = useState<string | null>(null);
   const [kpi, setKpi] = useState<any>(null);
   const [kpiLoading, setKpiLoading] = useState(false);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState<any>(null);
+
+  const loadRecentInvoices = () => {
+    setInvoicesLoading(true);
+    fetchRecentInvoices(10)
+      .then((rows) => {
+        const mapped = (Array.isArray(rows) ? rows : []).slice(0, 10).map((r: any) => {
+          const ps = String(r.payment_status || '').toUpperCase();
+          const status = ps === 'PAID' ? 'Paid' : ps === 'PARTIAL' ? 'Partial' : 'Pending';
+          return {
+            rawId: Number(r.id),
+            id: r.voucher_no ? `${r.series ? r.series + '-' : 'INV-'}${r.voucher_no}` : `INV-${r.id}`,
+            customer: r.account_name || 'Walk-in',
+            date: r.voucher_date || (r.created_at ? new Date(r.created_at).toLocaleDateString('en-IN') : '—'),
+            weight: Number(r.total_weight || 0).toFixed(2),
+            amount: Number(r.net_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            status,
+          };
+        });
+        setRecentInvoices(mapped);
+      })
+      .catch(() => setRecentInvoices([]))
+      .finally(() => setInvoicesLoading(false));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -52,21 +78,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetchRecentInvoices(5)
-      .then((rows) => {
-        if (cancelled) return;
-        const mapped = rows.map((r: any) => ({
-          id: r.voucher_no || r.id,
-          customer: r.account_name || 'Walk-in',
-          dateTime: r.created_at ? new Date(r.created_at).toLocaleString('en-IN') : r.voucher_date,
-          amount: Number(r.net_amount || 0).toLocaleString('en-IN'),
-          status: Number(r.settled_cash_inr || 0) >= Number(r.net_amount || 0) ? 'Paid' : 'Pending',
-        }));
-        setRecentInvoices(mapped);
-      })
-      .catch(() => { if (!cancelled) setRecentInvoices([]); });
-    return () => { cancelled = true; };
+    loadRecentInvoices();
   }, []);
 
   const rangeMap: Record<string, 'today' | '7days' | '30days'> = {
@@ -96,51 +108,20 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     return () => { cancelled = true; };
   }, [salesTimeframe]);
 
-  // Auto-refresh KPI and sales data every 30 seconds
+  // Auto-refresh KPI, sales data, and recent invoices every 30 seconds
   useEffect(() => {
     const intervalId = setInterval(() => {
-      fetchDashboardSummary().then((res) => setKpi(res));
+      fetchDashboardSummary().then((res) => setKpi(res)).catch(() => { });
       fetchSalesOverview(rangeMap[salesTimeframe]).then((res) => {
         setSalesData(res.points.map((p) => ({ label: p.label, total: p.total })));
         setSalesTotals(res.totals);
-      });
+      }).catch(() => { });
+      loadRecentInvoices();
     }, 30000);
     return () => clearInterval(intervalId);
   }, [salesTimeframe]);
 
-  // Categories matching the image
-  const categories = [
-    {
-      id: 'payal',
-      name: 'Payal',
-      image: '/assets/cat-payal.jpg',
-    },
-    {
-      id: 'chain',
-      name: 'Chain',
-      image: '/assets/cat-chain.jpg',
-    },
-    {
-      id: 'kada',
-      name: 'Kada',
-      image: '/assets/cat-kada.jpg',
-    },
-    {
-      id: 'ring',
-      name: 'Ring',
-      image: '/assets/cat-ring.jpg',
-    },
-    {
-      id: 'bracelet',
-      name: 'Bracelet',
-      image: '/assets/cat-bracelet.jpg',
-    },
-    {
-      id: 'other',
-      name: 'Other',
-      image: '/assets/cat-other.jpg',
-    },
-  ];
+
 
   // Recent invoices matching the image
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
@@ -153,53 +134,9 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
     <div className="flex-1 p-6 space-y-4 max-w-[1700px] mx-auto w-full overflow-y-auto overflow-x-hidden">
       {/* Row 1: Hero Banner + 4 Stat Cards + Sales Overview Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch min-w-0">
-        {/* Hero Card */}
-        <div className="lg:col-span-4 luxury-card rounded-2xl p-6 relative overflow-hidden flex flex-col justify-between border border-slate-200 dark:border-white/[0.08] min-h-[200px]">
-          {/* Subtle background glow */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="relative z-10 space-y-1.5">
-            <h2 className="font-display text-2xl font-bold tracking-[0.15em] text-slate-900 dark:text-white">
-              RUDRA SILVER
-            </h2>
-            <p className="font-serif italic text-amber-700 dark:text-amber-300/90 text-sm tracking-wide">
-              Premium Silver Jewellery
-            </p>
-            <p className="text-slate-500 dark:text-slate-400 text-xs mt-2">
-              Elegance in Every Detail
-            </p>
-
-            <div className="pt-4">
-              <button
-                onClick={() => onSelectCategory('Payal')}
-                className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-400/60 text-amber-900 dark:text-amber-200 text-xs font-semibold hover:border-amber-400 hover:text-amber-950 dark:hover:text-white transition shadow-sm group"
-              >
-                <span>View Collection</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-              </button>
-            </div>
-          </div>
-
-          {/* Right Product Showcase Graphic */}
-          <div className="absolute right-2 -bottom-2 w-48 h-48 pointer-events-none flex items-center justify-center">
-            <img
-              src="/assets/hero-jewellery.png"
-              alt="Silver Jewellery"
-              className="w-44 h-44 object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.25)]"
-              loading="lazy"
-            />
-          </div>
-
-          {/* Carousel dots */}
-          <div className="flex space-x-1.5 pt-4 relative z-10">
-            <span className="w-5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/20" />
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-white/20" />
-          </div>
-        </div>
-
-        {/* 4 Stat Cards in 2x2 Grid */}
-        <div className="lg:col-span-4 grid grid-cols-2 gap-3">
+        {/* 4 Summary Cards in Single Horizontal Row */}
+        <div className="lg:col-span-12 grid grid-cols-4 gap-4">
           {/* Stat 1: Today's Sales */}
           <div
             onClick={onOpenNewBilling}
@@ -215,10 +152,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                ₹{(kpi?.today_sales ?? 0).toLocaleString('en-IN')}
+                {kpiLoading && !kpi ? '...' : `₹${(kpi?.total_stock_value ?? kpi?.today_sales ?? 0).toLocaleString('en-IN')}`}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Today's Sales
+                Total Stock
               </div>
             </div>
           </div>
@@ -261,10 +198,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             </div>
             <div className="mt-3">
               <div className="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                {(kpi?.silver_sold ?? 0).toFixed(2)} g
+                {kpiLoading && !kpi ? '...' : `${(kpi?.silver_bullion_weight ?? kpi?.silver_sold ?? 0).toFixed(2)} g`}
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Silver Sold
+                Silver Bullion
               </div>
             </div>
           </div>
@@ -284,14 +221,14 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 ₹{kpi?.silver_rate ?? currentSilverRate}/g
               </div>
               <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Silver Rate
+                Daily Balance
               </div>
             </div>
           </div>
         </div>
 
         {/* Sales Overview Line Chart */}
-        <div className="lg:col-span-4 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between min-h-[200px]">
+        <div className="lg:col-span-12 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between min-h-[200px]">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
               <BarChart3 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
@@ -359,7 +296,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                       <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#ffffff" stroke="#d4af37" strokeWidth="2" className="filter drop-shadow-[0_0_4px_rgba(212,175,55,0.8)]" />
                     ))}
                     {pts.map((p, i) => (
-                      <text key={`t${i}`} x={p.x} y="126" fill="#94a3b8" fontSize="8" textAnchor="middle">{p.label}</text>
+                      <text key={`t${i}`} x={p.x} y="126" fill="currentColor" className="text-slate-400 dark:text-slate-500" fontSize="8" textAnchor="middle">{p.label}</text>
                     ))}
                   </svg>
                 );
@@ -370,43 +307,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
         </div>
       </div>
 
-      {/* Row 2: Jewellery Categories + Quick Actions */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 min-w-0">
-        <div className="lg:col-span-8 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08]">
-          <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 mb-4">
-            <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <h3 className="font-semibold text-sm">Jewellery Categories</h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-            {categories.map((cat) => {
-              return (
-                <div key={cat.id} onClick={() => onSelectCategory(cat.name)} className="bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 rounded-xl p-3 flex flex-col items-center justify-between cursor-pointer group transition-all duration-300 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] hover:-translate-y-0.5">
-                  <div className="w-16 h-16 rounded-full overflow-hidden bg-white dark:bg-[#0a0d14] border border-slate-200 dark:border-white/[0.08] flex items-center justify-center p-2 group-hover:scale-110 transition-transform">
-                    <img src={cat.image} alt={cat.name} className="w-full h-full object-contain" loading="lazy" />
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between w-full px-1">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 transition">{cat.name}</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 group-hover:text-amber-600 dark:group-hover:text-amber-300 transition" />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        <div className="lg:col-span-4 luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
-          <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200 mb-3">
-            <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <h3 className="font-semibold text-sm">Quick Actions</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5 flex-1">
-            <button onClick={onOpenWeighingModal} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><Scale className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">Weigh Item</span></button>
-            <button onClick={onOpenNewBilling} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><FileText className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">New Invoice</span></button>
-            <button onClick={() => onSelectCategory('Payal')} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><Box className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">Add Item</span></button>
-            <button onClick={onOpenLedger} className="p-3 rounded-xl bg-slate-50 dark:bg-[#151922] border border-slate-200 dark:border-white/[0.07] hover:border-amber-400 dark:hover:border-amber-500/40 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white flex flex-col items-center justify-center space-y-1.5 transition group"><BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" /><span className="text-xs font-semibold">View Reports</span></button>
-          </div>
-        </div>
-      </div>
-      {/* Row 3: Recent Invoices (Full Width) */}
+
+      {/* Row 3: Recent Invoices (Full Width - Max 10 records) */}
       <div className="grid grid-cols-1 min-w-0">
         <div className="luxury-card rounded-2xl p-5 border border-slate-200 dark:border-white/[0.08] flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
@@ -414,35 +316,71 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
               <h3 className="font-semibold text-sm">Recent Invoices</h3>
             </div>
-            <button onClick={() => navigate('/invoice-history')} className="text-[11px] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition flex items-center gap-1"><span>View All</span><ArrowRight className="w-3 h-3" /></button>
+            <button onClick={() => navigate('/invoice-history')} className="text-[11px] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition flex items-center gap-1"><span>View All Invoices</span><ArrowRight className="w-3 h-3" /></button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-white/[0.06] text-slate-500 dark:text-slate-400 text-[11px]">
-                  <th className="pb-2 font-medium">#</th>
+                  <th className="pb-2 font-medium">Invoice Number</th>
                   <th className="pb-2 font-medium">Customer Name</th>
-                  <th className="pb-2 font-medium">Date &amp; Time</th>
-                  <th className="pb-2 font-medium text-right">Amount</th>
-                  <th className="pb-2 font-medium text-right">Status</th>
+                  <th className="pb-2 font-medium">Invoice Date</th>
+                  <th className="pb-2 font-medium text-right">Total Weight</th>
+                  <th className="pb-2 font-medium text-right">Total Amount</th>
+                  <th className="pb-2 font-medium text-center">Payment Status</th>
+                  <th className="pb-2 font-medium text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04] font-sans">
-                {recentInvoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition">
-                    <td className="py-2.5 font-mono text-slate-500 dark:text-slate-400 text-[11px]">{inv.id}</td>
+                {invoicesLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading recent invoices...
+                    </td>
+                  </tr>
+                ) : recentInvoices.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 text-center text-slate-400 dark:text-slate-500">
+                      No recent invoices found
+                    </td>
+                  </tr>
+                ) : recentInvoices.map((inv) => (
+                  <tr
+                    key={inv.rawId || inv.id}
+                    onClick={() => {
+                      fetchInvoiceDetail(inv.rawId).then(setViewingInvoice).catch(() => navigate('/invoice-history'));
+                    }}
+                    className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition cursor-pointer"
+                  >
+                    <td className="py-2.5 font-mono font-semibold text-amber-700 dark:text-amber-400 text-[11px]">{inv.id}</td>
                     <td className="py-2.5 font-semibold text-slate-800 dark:text-slate-200">{inv.customer}</td>
-                    <td className="py-2.5 text-slate-500 dark:text-slate-400 text-[11px]">{inv.dateTime}</td>
+                    <td className="py-2.5 text-slate-500 dark:text-slate-400 text-[11px]">{inv.date}</td>
+                    <td className="py-2.5 font-mono text-slate-700 dark:text-slate-300 text-right">{inv.weight} g</td>
                     <td className="py-2.5 font-mono font-bold text-slate-900 dark:text-slate-200 text-right">₹ {inv.amount}</td>
-                    <td className="py-2.5 text-right">
+                    <td className="py-2.5 text-center">
                       <span
                         className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${inv.status === 'Paid'
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-400 dark:border-emerald-500/30'
-                          : 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-400 dark:border-amber-500/30'
+                          : inv.status === 'Partial'
+                            ? 'bg-sky-100 text-sky-800 border border-sky-300 dark:bg-sky-950/70 dark:text-sky-400 dark:border-sky-500/30'
+                            : 'bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-400 dark:border-amber-500/30'
                           }`}
                       >
                         {inv.status}
                       </span>
+                    </td>
+                    <td className="py-2.5 text-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchInvoiceDetail(inv.rawId).then(setViewingInvoice).catch(() => navigate('/invoice-history'));
+                        }}
+                        className="p-1.5 rounded-lg border border-slate-200 dark:border-white/[0.08] text-slate-500 hover:text-amber-600 dark:text-slate-400 dark:hover:text-amber-300 transition"
+                        title="View Invoice Details"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -451,6 +389,47 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Quick Invoice Preview Modal */}
+      {viewingInvoice && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="luxury-card rounded-2xl border border-slate-200 dark:border-white/[0.1] max-w-2xl w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-200 dark:border-white/[0.08] pb-3">
+              <div>
+                <h3 className="font-bold text-slate-900 dark:text-white text-sm">
+                  Invoice #{viewingInvoice.voucher_no} ({viewingInvoice.series || 'GST'})
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {viewingInvoice.account_name || 'Walk-in Customer'} • {viewingInvoice.voucher_date}
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingInvoice(null)}
+                className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.08] text-slate-700 dark:text-slate-200 text-xs font-medium"
+              >
+                Close
+              </button>
+            </div>
+            <div className="text-xs space-y-2 max-h-60 overflow-y-auto">
+              {(viewingInvoice.items || []).map((it: any, i: number) => (
+                <div key={i} className="flex justify-between border-b border-slate-100 dark:border-white/[0.05] pb-1.5">
+                  <span className="text-slate-700 dark:text-slate-200">{it.item_description || 'Silver Item'} ({Number(it.net_weight || 0).toFixed(3)} g)</span>
+                  <span className="font-mono font-semibold text-slate-900 dark:text-white">₹{Number(it.total_item_amount || 0).toLocaleString('en-IN')}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-white/[0.08] text-sm font-bold">
+              <span className="text-slate-700 dark:text-slate-300">Net Total: ₹{Number(viewingInvoice.net_amount || 0).toLocaleString('en-IN')}</span>
+              <button
+                onClick={() => { setViewingInvoice(null); navigate('/invoice-history'); }}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 text-xs font-bold"
+              >
+                Open Full Invoice History
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

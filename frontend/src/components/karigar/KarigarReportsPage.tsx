@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, AlertCircle, TrendingDown, Printer } from 'lucide-react';
+import { RefreshCw, AlertCircle, TrendingDown, Printer, FileDown } from 'lucide-react';
+import { printReport, downloadReportPdf, ReportPdfOptions } from '../../utils/reportPdf';
 import {
   fetchKarigarOutstanding,
   fetchKarigarIssueRecReport,
@@ -76,6 +77,219 @@ export const KarigarReportsPage: React.FC<Props> = ({ initialReport = 'outstandi
 
   useEffect(() => { load(); }, [reportType]);
 
+  const buildPdfOptions = (): ReportPdfOptions => {
+    const selectedKarigar = karigars.find(k => String(k.id) === filters.karigar_id)?.name || 'All Karigars';
+    const metaFilters = [
+      { label: 'Karigar', value: selectedKarigar },
+      ...(filters.from_date ? [{ label: 'From Date', value: filters.from_date }] : []),
+      ...(filters.to_date ? [{ label: 'To Date', value: filters.to_date }] : []),
+      ...(filters.lot_no ? [{ label: 'Lot No', value: filters.lot_no }] : []),
+    ];
+    const dateSuffix = new Date().toISOString().slice(0, 10);
+
+    if (reportType === 'outstanding') {
+      const rows = (data as KarigarOutstandingRecord[]).map(r => ({
+        code: r.account_code,
+        name: r.karigar_name,
+        city: r.city || '—',
+        ig: Number(r.total_issued_gold).toFixed(3),
+        is: Number(r.total_issued_silver).toFixed(3),
+        rg: Number(r.total_received_gold).toFixed(3),
+        rs: Number(r.total_received_silver).toFixed(3),
+        og: Number(r.outstanding_gold).toFixed(3),
+        os: Number(r.outstanding_silver).toFixed(3),
+        lots: r.open_lots,
+      }));
+      const sum = (k: keyof KarigarOutstandingRecord) => (data as KarigarOutstandingRecord[]).reduce((s, r) => s + Number(r[k] || 0), 0).toFixed(3);
+      return {
+        title: 'Karigar Outstanding Report',
+        filename: `Karigar_Outstanding_${dateSuffix}.pdf`,
+        orientation: 'landscape',
+        filters: metaFilters,
+        columns: [
+          { header: 'Code', dataKey: 'code' },
+          { header: 'Karigar', dataKey: 'name' },
+          { header: 'City', dataKey: 'city' },
+          { header: 'Issued Gold(g)', dataKey: 'ig', align: 'right' },
+          { header: 'Issued Silver(g)', dataKey: 'is', align: 'right' },
+          { header: 'Recd Gold(g)', dataKey: 'rg', align: 'right' },
+          { header: 'Recd Silver(g)', dataKey: 'rs', align: 'right' },
+          { header: 'Out Gold(g)', dataKey: 'og', align: 'right' },
+          { header: 'Out Silver(g)', dataKey: 'os', align: 'right' },
+          { header: 'Open Lots', dataKey: 'lots', align: 'center' },
+        ],
+        data: rows,
+        totals: { code: 'TOTAL', name: `${rows.length} Karigar(s)`, ig: sum('total_issued_gold'), is: sum('total_issued_silver'), rg: sum('total_received_gold'), rs: sum('total_received_silver'), og: sum('outstanding_gold'), os: sum('outstanding_silver'), lots: (data as KarigarOutstandingRecord[]).reduce((s, r) => s + Number(r.open_lots || 0), 0) },
+      };
+    }
+
+    if (reportType === 'issue-rec') {
+      const rows = (data as KarigarIssueRecReport[]).map(r => ({
+        vno: r.issue_voucher,
+        dt: r.issue_date,
+        name: r.karigar_name,
+        lot: r.lot_no || '—',
+        st: r.issue_status,
+        is: Number(r.issued_silver).toFixed(3),
+        rs: Number(r.received_silver).toFixed(3),
+        bs: Number(r.balance_silver).toFixed(3),
+        rv: r.receive_vouchers || '—',
+      }));
+      const sum = (k: keyof KarigarIssueRecReport) => (data as KarigarIssueRecReport[]).reduce((s, r) => s + Number(r[k] || 0), 0).toFixed(3);
+      return {
+        title: 'Karigar Issue / Receive Report',
+        filename: `Karigar_Issue_Receive_${dateSuffix}.pdf`,
+        orientation: 'landscape',
+        filters: metaFilters,
+        columns: [
+          { header: 'Issue Voucher', dataKey: 'vno' },
+          { header: 'Date', dataKey: 'dt' },
+          { header: 'Karigar', dataKey: 'name' },
+          { header: 'Lot No', dataKey: 'lot' },
+          { header: 'Status', dataKey: 'st', align: 'center' },
+          { header: 'Issued Silver(g)', dataKey: 'is', align: 'right' },
+          { header: 'Received Silver(g)', dataKey: 'rs', align: 'right' },
+          { header: 'Balance Silver(g)', dataKey: 'bs', align: 'right' },
+          { header: 'Receive Vouchers', dataKey: 'rv' },
+        ],
+        data: rows,
+        totals: { vno: 'TOTAL', name: `${rows.length} Issue(s)`, is: sum('issued_silver'), rs: sum('received_silver'), bs: sum('balance_silver') },
+      };
+    }
+
+    if (reportType === 'lot') {
+      const rows = (data as KarigarLotReport[]).map(r => ({
+        lot: r.lot_no,
+        name: r.karigar_name,
+        fi: r.first_issue_date,
+        li: r.last_issue_date,
+        cnt: r.issue_count,
+        is: Number(r.total_issued_silver).toFixed(3),
+        rs: Number(r.total_received_silver).toFixed(3),
+        bs: Number(r.balance_silver).toFixed(3),
+      }));
+      const sum = (k: keyof KarigarLotReport) => (data as KarigarLotReport[]).reduce((s, r) => s + Number(r[k] || 0), 0).toFixed(3);
+      return {
+        title: 'Karigar Lot Report',
+        filename: `Karigar_Lot_Report_${dateSuffix}.pdf`,
+        orientation: 'landscape',
+        filters: metaFilters,
+        columns: [
+          { header: 'Lot No', dataKey: 'lot' },
+          { header: 'Karigar', dataKey: 'name' },
+          { header: 'First Issue', dataKey: 'fi' },
+          { header: 'Last Issue', dataKey: 'li' },
+          { header: 'Issues', dataKey: 'cnt', align: 'center' },
+          { header: 'Issued Silver(g)', dataKey: 'is', align: 'right' },
+          { header: 'Received Silver(g)', dataKey: 'rs', align: 'right' },
+          { header: 'Balance Silver(g)', dataKey: 'bs', align: 'right' },
+        ],
+        data: rows,
+        totals: { lot: 'TOTAL', name: `${rows.length} Lot(s)`, is: sum('total_issued_silver'), rs: sum('total_received_silver'), bs: sum('balance_silver') },
+      };
+    }
+
+    if (reportType === 'dia-stn-balance') {
+      const rows = (data as KarigarDiaStnBalance[]).map(r => ({
+        code: r.account_code,
+        name: r.karigar_name,
+        city: r.city || '—',
+        di: Number(r.diamond_issued).toFixed(3),
+        dr: Number(r.diamond_received).toFixed(3),
+        db: Number(r.diamond_balance).toFixed(3),
+        si: Number(r.stone_issued).toFixed(3),
+        sr: Number(r.stone_received).toFixed(3),
+        sb: Number(r.stone_balance).toFixed(3),
+      }));
+      const sum = (k: keyof KarigarDiaStnBalance) => (data as KarigarDiaStnBalance[]).reduce((s, r) => s + Number(r[k] || 0), 0).toFixed(3);
+      return {
+        title: 'Karigar Diamond & Stone Balance',
+        filename: `Karigar_Dia_Stn_Balance_${dateSuffix}.pdf`,
+        orientation: 'landscape',
+        filters: metaFilters,
+        columns: [
+          { header: 'Code', dataKey: 'code' },
+          { header: 'Karigar', dataKey: 'name' },
+          { header: 'City', dataKey: 'city' },
+          { header: 'Dia Issued', dataKey: 'di', align: 'right' },
+          { header: 'Dia Recd', dataKey: 'dr', align: 'right' },
+          { header: 'Dia Bal', dataKey: 'db', align: 'right' },
+          { header: 'Stone Issued', dataKey: 'si', align: 'right' },
+          { header: 'Stone Recd', dataKey: 'sr', align: 'right' },
+          { header: 'Stone Bal', dataKey: 'sb', align: 'right' },
+        ],
+        data: rows,
+        totals: { code: 'TOTAL', di: sum('diamond_issued'), dr: sum('diamond_received'), db: sum('diamond_balance'), si: sum('stone_issued'), sr: sum('stone_received'), sb: sum('stone_balance') },
+      };
+    }
+
+    if (reportType === 'dia-stn-group') {
+      const rows = (data as KarigarDiaStnGroupBalance[]).map(r => ({
+        name: r.karigar_name,
+        grp: r.group_name,
+        cat: r.item_category,
+        iq: r.issued_qty,
+        rq: r.received_qty,
+        pq: r.pending_qty,
+        di: Number(r.issued_diamond).toFixed(3),
+        si: Number(r.issued_stone).toFixed(3),
+        wb: Number(r.weight_balance).toFixed(3),
+      }));
+      return {
+        title: 'Karigar Dia/Stn Group Balance',
+        filename: `Karigar_Dia_Stn_Group_${dateSuffix}.pdf`,
+        orientation: 'landscape',
+        filters: metaFilters,
+        columns: [
+          { header: 'Karigar', dataKey: 'name' },
+          { header: 'Group / Item Type', dataKey: 'grp' },
+          { header: 'Category', dataKey: 'cat' },
+          { header: 'Issued Qty', dataKey: 'iq', align: 'right' },
+          { header: 'Recd Qty', dataKey: 'rq', align: 'right' },
+          { header: 'Pending Qty', dataKey: 'pq', align: 'right' },
+          { header: 'Dia Issued', dataKey: 'di', align: 'right' },
+          { header: 'Stn Issued', dataKey: 'si', align: 'right' },
+          { header: 'Wt Balance', dataKey: 'wb', align: 'right' },
+        ],
+        data: rows,
+      };
+    }
+
+    const rows = (data as KarigarDiaStnIssueRec[]).map(r => ({
+      dt: r.tx_date,
+      vno: r.voucher_no,
+      tp: r.tx_type,
+      name: r.karigar_name,
+      lot: r.lot_no || '—',
+      item: r.item_name,
+      grp: r.item_type || '—',
+      iq: r.issue_qty,
+      rq: r.receive_qty,
+      dw: Number(r.diamond_weight).toFixed(3),
+      sw: Number(r.stone_weight).toFixed(3),
+    }));
+    return {
+      title: 'Karigar Dia/Stn Issue & Receive',
+      filename: `Karigar_Dia_Stn_IssueRec_${dateSuffix}.pdf`,
+      orientation: 'landscape',
+      filters: metaFilters,
+      columns: [
+        { header: 'Date', dataKey: 'dt' },
+        { header: 'Voucher No', dataKey: 'vno' },
+        { header: 'Type', dataKey: 'tp', align: 'center' },
+        { header: 'Karigar', dataKey: 'name' },
+        { header: 'Lot No', dataKey: 'lot' },
+        { header: 'Item', dataKey: 'item' },
+        { header: 'Group', dataKey: 'grp' },
+        { header: 'Issue Qty', dataKey: 'iq', align: 'right' },
+        { header: 'Recd Qty', dataKey: 'rq', align: 'right' },
+        { header: 'Dia Wt', dataKey: 'dw', align: 'right' },
+        { header: 'Stone Wt', dataKey: 'sw', align: 'right' },
+      ],
+      data: rows,
+    };
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#f4f6f9]">
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
@@ -89,8 +303,11 @@ export const KarigarReportsPage: React.FC<Props> = ({ initialReport = 'outstandi
           </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => window.print()} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
+          <button onClick={() => printReport(buildPdfOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             <Printer className="w-3.5 h-3.5" /> Print
+          </button>
+          <button onClick={() => downloadReportPdf(buildPdfOptions())} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+            <FileDown className="w-3.5 h-3.5" /> PDF
           </button>
           <button onClick={load} className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             <RefreshCw className="w-3.5 h-3.5" /> Refresh

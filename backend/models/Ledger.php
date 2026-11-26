@@ -274,4 +274,28 @@ class Ledger {
         $cities = $db->query("SELECT DISTINCT city FROM ledgers WHERE city IS NOT NULL AND city != '' ORDER BY city")->fetchAll(PDO::FETCH_COLUMN);
         return ['groups' => $groups, 'cities' => $cities];
     }
+
+    public static function getLedgerCsvData(int $ledgerId, ?string $from = null, ?string $to = null): array {
+        $db = Database::getConnection();
+        $where = 'ledger_id = :id';
+        $params = ['id' => $ledgerId];
+        if ($from) { $where .= ' AND posting_date >= :from'; $params['from'] = $from; }
+        if ($to) { $where .= ' AND posting_date <= :to'; $params['to'] = $to; }
+
+        $stmt = $db->prepare("
+            SELECT lp.debit, lp.credit, lp.running_balance, lp.balance_type, lp.posting_date,
+                   v.voucher_type, v.voucher_no, v.series,
+                   l.ledger_name, l.ledger_code, ag.name AS group_name
+            FROM ledger_postings lp
+            LEFT JOIN vouchers v ON v.id = lp.voucher_id
+            LEFT JOIN ledgers l ON l.id = lp.ledger_id
+            LEFT JOIN account_groups ag ON ag.id = l.group_id
+            WHERE $where
+            ORDER BY lp.posting_date ASC, lp.id ASC
+        ");
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return ['rows' => $rows, 'ledger_id' => $ledgerId];
+    }
 }

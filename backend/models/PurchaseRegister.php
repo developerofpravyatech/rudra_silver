@@ -342,6 +342,11 @@ class PurchaseRegister {
         ]);
 
         $id = (int)$db->lastInsertId();
+        $invTotal = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
+        $gstAmt = max(0, (float)($data['gst_amount'] ?? 0));
+        $db->prepare("UPDATE purchase_register SET gst_amount = :gst, paid_amount = 0, outstanding_amount = :out, payment_status = 'UNPAID' WHERE id = :id")
+           ->execute(['gst' => $gstAmt, 'out' => $invTotal, 'id' => $id]);
+        self::postAccounting($id, $data);
         return self::findById($id);
     }
 
@@ -454,14 +459,54 @@ class PurchaseRegister {
             'remarks'               => isset($data['remarks']) ? trim((string)$data['remarks']) : $existing['remarks'],
         ]);
 
+        $merged = array_merge($existing, $data);
+        $newTotal = max(0, (float)($merged['amount'] ?? $merged['purchase_value'] ?? 0));
+        $paidAmt = (float)($existing['paid_amount'] ?? 0);
+        if ($paidAmt > $newTotal + 0.01) {
+            throw new Exception("Cannot update purchase invoice total (₹{$newTotal}) below already paid amount (₹{$paidAmt}).");
+        }
+        $gstAmt = max(0, (float)($merged['gst_amount'] ?? 0));
+        $db->prepare("UPDATE purchase_register SET gst_amount = :gst WHERE id = :id")->execute(['gst' => $gstAmt, 'id' => $id]);
+        \Services\VoucherAllocationService::recalculateInvoice('PURCHASE_REGISTER', $id);
+        self::postAccounting($id, $merged);
         return self::findById($id);
     }
 
     public static function softDelete(int $id): bool {
         $db = Database::getConnection();
+        if (\Services\VoucherAllocationService::countActiveAllocationsForInvoice('PURCHASE_REGISTER', $id) > 0) {
+            throw new Exception('Cannot cancel/delete this Purchase Invoice because payment vouchers are allocated against it. Please cancel or unallocate the payment voucher(s) first.');
+        }
         $stmt = $db->prepare("UPDATE purchase_register SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
         $stmt->execute(['id' => $id]);
-        return $stmt->rowCount() > 0;
+        if ($stmt->rowCount() > 0) {
+            try { \Services\AccountingEngine::reverseReference('PURCHASE_REGISTER', $id); } catch (\Throwable $e) {}
+            return true;
+        }
+        return false;
+    }
+
+    private static function postAccounting(int $id, array $data): void {
+        try {
+            $amt = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
+            if ($amt <= 0) return;
+            $gst = max(0, min($amt, (float)($data['gst_amount'] ?? 0)));
+            $taxable = round($amt - $gst, 2);
+            $partyName = trim((string)($data['party_name'] ?? 'Cash Supplier'));
+            $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+            $partyLedgerId = \Services\PartyLedgerSync::resolveOrCreatePartyLedger($partyName, 'Sundry Creditors (Suppliers)');
+            $purchaseLedgerId = \Services\PartyLedgerSync::getSystemLedger('Purchase Account', 'Purchase Accounts', 'EXPENSE');
+            $narr = 'Purchase ' . ($data['voucher_no'] ?? "#$id") . ' - ' . ($data['particular'] ?? '');
+            $entries = [
+                ['ledger_id' => $purchaseLedgerId, 'debit' => $taxable, 'credit' => 0, 'narration' => $narr],
+                ['ledger_id' => $partyLedgerId, 'debit' => 0, 'credit' => $amt, 'narration' => $narr],
+            ];
+            if ($gst > 0) {
+                $gstLedgerId = \Services\PartyLedgerSync::getSystemLedger('GST Input', 'Duties & Taxes', 'LIABILITY');
+                $entries[] = ['ledger_id' => $gstLedgerId, 'debit' => $gst, 'credit' => 0, 'narration' => "GST Input - $narr"];
+            }
+            \Services\AccountingEngine::postReference('PURCHASE_REGISTER', $id, $date, $entries, $narr);
+        } catch (\Throwable $e) {}
     }
 
     public static function filterOptions(): array {
@@ -541,6 +586,10 @@ class PurchaseRegister {
             'gold_weight'           => (float)($row['gold_weight'] ?? 0),
             'silver_weight'         => (float)($row['silver_weight'] ?? 0),
             'amount'                => (float)($row['amount'] ?? 0),
+            'gst_amount'            => (float)($row['gst_amount'] ?? 0),
+            'paid_amount'           => (float)($row['paid_amount'] ?? 0),
+            'outstanding_amount'    => (float)($row['outstanding_amount'] ?? 0),
+            'payment_status'        => $row['payment_status'] ?? 'UNPAID',
             'is_selected'           => (int)($row['is_selected'] ?? 0),
             'is_approved'           => (int)($row['is_approved'] ?? 0),
             'is_excluded'           => (int)($row['is_excluded'] ?? 0),
