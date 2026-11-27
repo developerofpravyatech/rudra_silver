@@ -94,16 +94,27 @@ class LedgerController {
 
     public static function balance(int $id = 0): void {
         if (!$id) $id = (int)($_GET['id'] ?? 0);
-        $date = $_GET['as_on'] ?? null;
+        $date = !empty($_GET['as_on']) ? $_GET['as_on'] : null;
+        $excludeVoucherId = !empty($_GET['exclude_voucher_id']) ? (int)$_GET['exclude_voucher_id'] : null;
         if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'ID required']); return; }
-        echo json_encode(['success' => true, 'data' => Ledger::getBalance($id, $date)]);
+        echo json_encode(['success' => true, 'data' => Ledger::getBalance($id, $date, $excludeVoucherId)]);
     }
 
     public static function book(int $id = 0): void {
         if (!$id) $id = (int)($_GET['id'] ?? 0);
-        $from = $_GET['from'] ?? null;
-        $to = $_GET['to'] ?? null;
+        $from = !empty($_GET['from']) ? $_GET['from'] : null;
+        $to = !empty($_GET['to']) ? $_GET['to'] : null;
         if (!$id) { http_response_code(400); echo json_encode(['success' => false, 'message' => 'ID required']); return; }
-        echo json_encode(['success' => true, 'data' => Ledger::getLedgerBook($id, $from, $to)]);
+        if ($from && $to && $from > $to) {
+            http_response_code(422);
+            echo json_encode(['success' => false, 'message' => 'From Date cannot be greater than To Date.']);
+            return;
+        }
+        try {
+            echo json_encode(['success' => true, 'data' => Ledger::getLedgerBook($id, $from, $to, $_GET)]);
+        } catch (\Exception $e) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+        }
     }
 }

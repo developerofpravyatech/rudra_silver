@@ -57,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     'metal-stock': '/metal-stock',
     inventory: '/inventory',
     'stock-status': '/stock-status',
+    'daily-entry': '/daily-entry',
     'daily-balance': '/daily-balance',
     transactions: '/transactions',
     'silver-bullion': '/silver-bullion',
@@ -78,6 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const navItems: Array<{ id: string; label: string; icon: any; badge?: string }> = [
     { id: 'dashboard', label: 'Dashboard', icon: Home },
+    { id: 'daily-entry', label: 'Daily Entry', icon: BookOpen },
     { id: 'category-list', label: 'Categories', icon: Tags },
     { id: 'customers', label: 'Customers', icon: Contact },
     { id: 'stock-list', label: 'Stock List', icon: Package },
@@ -91,12 +93,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'age-wise-list', label: 'Age Wise List', icon: Clock },
     { id: 'item-master', label: 'Item Master', icon: Sparkles },
     { id: 'karigar', label: 'Karigar', icon: UserPlus },
-    { id: 'invoice-history', label: 'Invoice', icon: Clock },
-    { id: 'account-groups', label: 'Account Groups', icon: Layers },
-    { id: 'ledger-master', label: 'Ledger Master', icon: Landmark },
     { id: 'accounting-vouchers', label: 'Vouchers', icon: FileText },
-    { id: 'returns', label: 'Sale/Pur Returns', icon: Receipt },
-    { id: 'accounting-reports', label: 'Acct Reports', icon: PieChart },
+    { id: 'invoice-history', label: 'Invoice', icon: Clock },
+    //{ id: 'account-groups', label: 'Account Groups', icon: Layers },
+    { id: 'ledger-master', label: 'Ledger Master', icon: Landmark },
+    { id: 'accounting-reports', label: 'Accounting-reports', icon: PieChart },
     { id: 'user-management', label: 'Users', icon: Users },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -118,7 +119,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             (item.id === 'sale-register' && (activeTab === 'sale-register' || activeTab === 'sale-register-add' || activeTab === 'sale-register-edit')) ||
             (item.id === 'category-list' && (activeTab === 'category-list' || activeTab === 'category-add' || activeTab === 'category-edit')) ||
             (item.id === 'karigar' && (activeTab === 'karigar' || activeTab === 'karigar-add' || activeTab === 'karigar-edit')) ||
-            (item.id === 'customers' && (activeTab === 'customers' || activeTab === 'customer-add' || activeTab === 'customer-edit'));
+            (item.id === 'customers' && (activeTab === 'customers' || activeTab === 'customer-add' || activeTab === 'customer-edit')) ||
+            (item.id === 'ledger-master' && (activeTab === 'ledger-master' || activeTab === 'ledger-add' || activeTab === 'ledger-edit' || activeTab === 'ledger-book'));
           return (
             <button
               key={item.id}

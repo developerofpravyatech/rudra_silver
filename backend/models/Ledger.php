@@ -28,6 +28,18 @@ class Ledger {
             $params['city'] = '%' . $filters['city'] . '%';
         }
 
+        $allowedSorts = [
+            'ledger_name' => 'l.ledger_name',
+            'ledger_code' => 'l.ledger_code',
+            'city' => 'l.city',
+            'mobile' => 'l.mobile',
+            'group_name' => 'ag.name',
+            'opening_balance' => 'l.opening_balance',
+            'status' => 'l.status',
+        ];
+        $sortBy = $allowedSorts[$filters['sort_by'] ?? 'ledger_name'] ?? 'l.ledger_name';
+        $sortDir = strtoupper($filters['sort_dir'] ?? 'ASC') === 'DESC' ? 'DESC' : 'ASC';
+
         $page = max(1, (int)($filters['page'] ?? 1));
         $limit = max(1, min(200, (int)($filters['limit'] ?? 20)));
         $offset = ($page - 1) * $limit;
@@ -42,7 +54,7 @@ class Ledger {
             FROM ledgers l
             LEFT JOIN account_groups ag ON ag.id = l.group_id
             WHERE $whereStr
-            ORDER BY l.ledger_name ASC
+            ORDER BY $sortBy $sortDir, l.id ASC
             LIMIT :limit OFFSET :offset
         ");
         foreach ($params as $k => $v) $stmt->bindValue(':' . $k, $v);
@@ -210,7 +222,7 @@ class Ledger {
         ")->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public static function getBalance(int $ledgerId, ?string $asOnDate = null): array {
+    public static function getBalance(int $ledgerId, ?string $asOnDate = null, ?int $excludeVoucherId = null): array {
         $db = Database::getConnection();
         $where = 'ledger_id = :id';
         $params = ['id' => $ledgerId];
@@ -218,53 +230,346 @@ class Ledger {
             $where .= ' AND posting_date <= :date';
             $params['date'] = $asOnDate;
         }
-        $row = $db->prepare("SELECT SUM(debit) AS total_dr, SUM(credit) AS total_cr FROM ledger_postings WHERE $where");
+        if ($excludeVoucherId && $excludeVoucherId > 0) {
+            $where .= ' AND (voucher_id IS NULL OR voucher_id != :exclude_vid)';
+            $params['exclude_vid'] = $excludeVoucherId;
+        }
+        $row = $db->prepare("SELECT COALESCE(SUM(debit), 0) AS total_dr, COALESCE(SUM(credit), 0) AS total_cr, SUM(CASE WHEN is_opening = 1 THEN 1 ELSE 0 END) AS has_opening FROM ledger_postings WHERE $where");
         $row->execute($params);
         $data = $row->fetch(PDO::FETCH_ASSOC);
         $dr = (float)($data['total_dr'] ?? 0);
         $cr = (float)($data['total_cr'] ?? 0);
+        $hasOpening = (int)($data['has_opening'] ?? 0) > 0;
+
+        // Fetch ledger metadata & linked account metal fine balances
+        $lStmt = $db->prepare("
+            SELECT l.opening_balance, l.opening_balance_type,
+                   COALESCE(a.balance_fine_gold, 0) AS fine_gold,
+                   COALESCE(a.balance_fine_silver, 0) AS fine_silver
+            FROM ledgers l
+            LEFT JOIN accounts a ON a.id = l.account_ref_id
+            WHERE l.id = :id
+            LIMIT 1
+        ");
+        $lStmt->execute(['id' => $ledgerId]);
+        $ledgerMeta = $lStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$hasOpening && $ledgerMeta && (float)$ledgerMeta['opening_balance'] > 0) {
+            $ob = (float)$ledgerMeta['opening_balance'];
+            if ($ledgerMeta['opening_balance_type'] === 'DR') {
+                $dr += $ob;
+            } elseif ($ledgerMeta['opening_balance_type'] === 'CR') {
+                $cr += $ob;
+            }
+        }
+
         $balance = $dr - $cr;
         return [
             'ledger_id' => $ledgerId,
-            'total_debit' => $dr,
-            'total_credit' => $cr,
-            'balance' => abs($balance),
+            'total_debit' => round($dr, 2),
+            'total_credit' => round($cr, 2),
+            'balance' => round(abs($balance), 2),
             'balance_type' => $balance >= 0 ? 'DR' : 'CR',
+            'fine_gold' => round((float)($ledgerMeta['fine_gold'] ?? 0), 3),
+            'fine_silver' => round((float)($ledgerMeta['fine_silver'] ?? 0), 3),
         ];
     }
 
-    public static function getLedgerBook(int $ledgerId, ?string $from = null, ?string $to = null): array {
+    public static function getLedgerBook(int $ledgerId, ?string $from = null, ?string $to = null, array $filters = []): array {
         $db = Database::getConnection();
+        $ledger = self::getById($ledgerId);
+        if (!$ledger) {
+            throw new Exception('Ledger not found');
+        }
+
+        // Check if any opening posting exists in ledger_postings
+        $hasOpeningStmt = $db->prepare("SELECT COUNT(*) FROM ledger_postings WHERE ledger_id = :id AND is_opening = 1");
+        $hasOpeningStmt->execute(['id' => $ledgerId]);
+        $hasOpeningPosting = (int)$hasOpeningStmt->fetchColumn() > 0;
+
+        // Calculate brought-forward balance if $from is provided
+        $openingEntries = [];
+        $bfAmount = 0.0;
+        $bfGold = 0.0;
+        $bfSilver = 0.0;
+
+        if ($from) {
+            $priorStmt = $db->prepare("
+                SELECT lp.debit, lp.credit, lp.reference_type,
+                       sr.gold_weight AS sr_gold, sr.silver_weight AS sr_silver,
+                       pr.gold_weight AS pr_gold, pr.silver_weight AS pr_silver,
+                       sret.metal_type AS sret_metal, sret.return_weight AS sret_weight,
+                       pret.metal_type AS pret_metal, pret.return_weight AS pret_weight
+                FROM ledger_postings lp
+                LEFT JOIN sale_register sr ON lp.reference_type = 'SALE_REGISTER' AND sr.id = lp.reference_id
+                LEFT JOIN purchase_register pr ON lp.reference_type = 'PURCHASE_REGISTER' AND pr.id = lp.reference_id
+                LEFT JOIN sale_returns sret ON lp.reference_type = 'SALE_RETURN' AND sret.id = lp.reference_id
+                LEFT JOIN purchase_returns pret ON lp.reference_type = 'PURCHASE_RETURN' AND pret.id = lp.reference_id
+                WHERE lp.ledger_id = :id AND lp.posting_date < :from
+            ");
+            $priorStmt->execute(['id' => $ledgerId, 'from' => $from]);
+            foreach ($priorStmt->fetchAll(PDO::FETCH_ASSOC) as $prRow) {
+                $dr = (float)$prRow['debit'];
+                $cr = (float)$prRow['credit'];
+                $bfAmount += ($dr - $cr);
+                $g = (float)($prRow['sr_gold'] ?? $prRow['pr_gold'] ?? 0);
+                $s = (float)($prRow['sr_silver'] ?? $prRow['pr_silver'] ?? 0);
+                if ($prRow['reference_type'] === 'SALE_RETURN') {
+                    if (stripos((string)$prRow['sret_metal'], 'gold') !== false) $g += (float)$prRow['sret_weight'];
+                    else $s += (float)$prRow['sret_weight'];
+                } elseif ($prRow['reference_type'] === 'PURCHASE_RETURN') {
+                    if (stripos((string)$prRow['pret_metal'], 'gold') !== false) $g += (float)$prRow['pret_weight'];
+                    else $s += (float)$prRow['pret_weight'];
+                }
+                if ($dr >= $cr) { $bfGold += $g; $bfSilver += $s; }
+                else { $bfGold -= $g; $bfSilver -= $s; }
+            }
+        }
+
+        if (!$hasOpeningPosting && (float)($ledger['opening_balance'] ?? 0) > 0) {
+            $ob = (float)$ledger['opening_balance'];
+            $obType = $ledger['opening_balance_type'] ?? 'NIL';
+            if ($obType === 'DR') $bfAmount += $ob;
+            elseif ($obType === 'CR') $bfAmount -= $ob;
+        }
+
+        if (abs($bfAmount) > 0.001 || abs($bfGold) > 0.0001 || abs($bfSilver) > 0.0001) {
+            $openingEntries[] = [
+                'id' => 0,
+                'ledger_id' => $ledgerId,
+                'voucher_id' => null,
+                'reference_type' => 'OPENING',
+                'reference_id' => null,
+                'voucher_type' => 'OPENING',
+                'voucher_no' => 'OB',
+                'series' => '',
+                'reference_no' => 'Opening',
+                'posting_date' => $from ?: ($ledger['opening_balance_date'] ?? date('Y-m-d')),
+                'narration' => $from ? 'Opening Balance (Brought Forward)' : 'Opening Balance',
+                'is_opening' => 1,
+                'debit' => $bfAmount >= 0 ? round($bfAmount, 2) : 0.0,
+                'credit' => $bfAmount < 0 ? round(abs($bfAmount), 2) : 0.0,
+                'gold_fine_dr' => $bfGold >= 0 ? round($bfGold, 3) : 0.0,
+                'gold_fine_cr' => $bfGold < 0 ? round(abs($bfGold), 3) : 0.0,
+                'silver_fine_dr' => $bfSilver >= 0 ? round($bfSilver, 3) : 0.0,
+                'silver_fine_cr' => $bfSilver < 0 ? round(abs($bfSilver), 3) : 0.0,
+                'diamond_weight' => 0.0,
+                'stone_weight' => 0.0,
+                'is_approved' => 1,
+                'is_excluded' => 0,
+            ];
+        }
+
         $where = 'lp.ledger_id = :id';
         $params = ['id' => $ledgerId];
         if ($from) { $where .= ' AND lp.posting_date >= :from'; $params['from'] = $from; }
         if ($to) { $where .= ' AND lp.posting_date <= :to'; $params['to'] = $to; }
 
         $stmt = $db->prepare("
-            SELECT lp.*, v.voucher_type, v.voucher_no, v.series
+            SELECT lp.*,
+                   v.voucher_type AS v_type, v.voucher_no, v.series,
+                   sr.voucher_no AS sr_vno, sr.voucher_type AS sr_vtype, sr.item_name AS sr_item, sr.stamp AS sr_stamp, sr.item_type AS sr_item_type, sr.remarks AS sr_remarks, sr.gold_weight AS sr_gold, sr.silver_weight AS sr_silver, sr.diamond_weight AS sr_dia, sr.stone_weight AS sr_stone, sr.is_approved AS sr_approved, sr.is_excluded AS sr_excluded, sr.is_selected AS sr_selected,
+                   pr.voucher_no AS pr_vno, pr.voucher_type AS pr_vtype, pr.particular AS pr_item, pr.stamp AS pr_stamp, pr.item_type AS pr_item_type, pr.remarks AS pr_remarks, pr.gold_weight AS pr_gold, pr.silver_weight AS pr_silver, pr.diamond_weight AS pr_dia, pr.stone_weight AS pr_stone, pr.is_approved AS pr_approved, pr.is_excluded AS pr_excluded, pr.is_selected AS pr_selected,
+                   sret.return_no AS sret_no, sret.metal_type AS sret_metal, sret.return_weight AS sret_weight,
+                   pret.return_no AS pret_no, pret.metal_type AS pret_metal, pret.return_weight AS pret_weight
             FROM ledger_postings lp
             LEFT JOIN vouchers v ON v.id = lp.voucher_id
+            LEFT JOIN sale_register sr ON lp.reference_type = 'SALE_REGISTER' AND sr.id = lp.reference_id
+            LEFT JOIN purchase_register pr ON lp.reference_type = 'PURCHASE_REGISTER' AND pr.id = lp.reference_id
+            LEFT JOIN sale_returns sret ON lp.reference_type = 'SALE_RETURN' AND sret.id = lp.reference_id
+            LEFT JOIN purchase_returns pret ON lp.reference_type = 'PURCHASE_RETURN' AND pret.id = lp.reference_id
             WHERE $where
-            ORDER BY lp.posting_date ASC, lp.id ASC
+            ORDER BY lp.is_opening DESC, lp.posting_date ASC, lp.id ASC
         ");
         $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rawRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Calculate running balance
-        $balance = 0;
-        $balType = 'DR';
-        foreach ($rows as &$row) {
-            $balance += (float)$row['debit'] - (float)$row['credit'];
-            $row['running_balance'] = abs($balance);
-            $row['balance_type'] = $balance >= 0 ? 'DR' : 'CR';
+        $normalized = $openingEntries;
+        foreach ($rawRows as $r) {
+            $dr = (float)$r['debit'];
+            $cr = (float)$r['credit'];
+            $refType = $r['reference_type'] ?: ($r['v_type'] ?: ($r['is_opening'] ? 'OPENING' : 'JOURNAL'));
+            $vType = $r['is_opening'] ? 'OPENING' : ($r['v_type'] ?: ($r['sr_vtype'] ?: ($r['pr_vtype'] ?: $refType)));
+            $refNo = $r['voucher_no']
+                ? (($r['series'] ? $r['series'] . '/' : '') . $r['voucher_no'])
+                : ($r['sr_vno'] ?: ($r['pr_vno'] ?: ($r['sret_no'] ?: ($r['pret_no'] ?: ($r['is_opening'] ? 'Opening' : '—')))));
+
+            $gold = (float)($r['sr_gold'] ?? $r['pr_gold'] ?? 0);
+            $silver = (float)($r['sr_silver'] ?? $r['pr_silver'] ?? 0);
+            if ($refType === 'SALE_RETURN') {
+                if (stripos((string)$r['sret_metal'], 'gold') !== false) $gold = (float)$r['sret_weight'];
+                else $silver = (float)$r['sret_weight'];
+            } elseif ($refType === 'PURCHASE_RETURN') {
+                if (stripos((string)$r['pret_metal'], 'gold') !== false) $gold = (float)$r['pret_weight'];
+                else $silver = (float)$r['pret_weight'];
+            }
+
+            $dia = (float)($r['sr_dia'] ?? $r['pr_dia'] ?? 0);
+            $stone = (float)($r['sr_stone'] ?? $r['pr_stone'] ?? 0);
+            $isApproved = $r['sr_approved'] !== null ? (int)$r['sr_approved'] : ($r['pr_approved'] !== null ? (int)$r['pr_approved'] : 1);
+            $isExcluded = $r['sr_excluded'] !== null ? (int)$r['sr_excluded'] : ($r['pr_excluded'] !== null ? (int)$r['pr_excluded'] : 0);
+            $isSelected = $r['sr_selected'] !== null ? (int)$r['sr_selected'] : ($r['pr_selected'] !== null ? (int)$r['pr_selected'] : 0);
+
+            $normalized[] = [
+                'id' => (int)$r['id'],
+                'ledger_id' => (int)$r['ledger_id'],
+                'voucher_id' => $r['voucher_id'] ? (int)$r['voucher_id'] : null,
+                'reference_type' => $refType,
+                'reference_id' => $r['reference_id'] ? (int)$r['reference_id'] : null,
+                'voucher_type' => $vType,
+                'voucher_no' => $r['voucher_no'],
+                'series' => $r['series'],
+                'reference_no' => $refNo,
+                'posting_date' => $r['posting_date'],
+                'narration' => $r['narration'] ?: ($r['is_opening'] ? 'Opening Balance' : ''),
+                'is_opening' => (int)$r['is_opening'],
+                'debit' => round($dr, 2),
+                'credit' => round($cr, 2),
+                'gold_fine_dr' => $dr >= $cr ? round($gold, 3) : 0.0,
+                'gold_fine_cr' => $cr > $dr ? round($gold, 3) : 0.0,
+                'silver_fine_dr' => $dr >= $cr ? round($silver, 3) : 0.0,
+                'silver_fine_cr' => $cr > $dr ? round($silver, 3) : 0.0,
+                'diamond_weight' => round($dia, 3),
+                'stone_weight' => round($stone, 3),
+                'is_approved' => $isApproved,
+                'is_excluded' => $isExcluded,
+                'is_selected' => $isSelected,
+                'item_name' => (string)($r['sr_item'] ?? $r['pr_item'] ?? ''),
+                'stamp' => (string)($r['sr_stamp'] ?? $r['pr_stamp'] ?? ''),
+                'item_type' => (string)($r['sr_item_type'] ?? $r['pr_item_type'] ?? ''),
+                'remarks' => (string)($r['sr_remarks'] ?? $r['pr_remarks'] ?? ''),
+            ];
         }
 
-        $ledger = self::getById($ledgerId);
+        // Apply optional statement filters
+        $vTypeFilter = strtoupper(trim((string)($filters['voucher_type'] ?? '')));
+        $search = strtolower(trim((string)($filters['search'] ?? '')));
+        $exclude = !empty($filters['exclude']) && $filters['exclude'] !== '0' && $filters['exclude'] !== 'false';
+        $approval = strtolower(trim((string)($filters['approval'] ?? '')));
+        $diaFilter = strtolower(trim((string)($filters['dia_filter'] ?? '')));
+
+        $filtered = array_values(array_filter($normalized, function ($row) use ($vTypeFilter, $search, $exclude, $approval, $diaFilter) {
+            if ($vTypeFilter !== '' && $vTypeFilter !== 'ALL') {
+                if (strtoupper((string)$row['voucher_type']) !== $vTypeFilter && strtoupper((string)$row['reference_type']) !== $vTypeFilter) {
+                    return false;
+                }
+            }
+            if ($exclude && (int)$row['is_excluded'] === 1) {
+                return false;
+            }
+            if ($search !== '') {
+                $haystack = strtolower(($row['narration'] ?? '') . ' ' . ($row['reference_no'] ?? '') . ' ' . ($row['voucher_type'] ?? ''));
+                $matched = str_contains($haystack, $search);
+                if ($exclude ? $matched : !$matched) {
+                    return false;
+                }
+            }
+            if ($approval === 'approval' || $approval === 'approved') {
+                if ((int)$row['is_approved'] !== 1) return false;
+            } elseif ($approval === 'without_approval' || $approval === 'unapproved') {
+                if ((int)$row['is_approved'] !== 0) return false;
+            } elseif ($approval === 'selected') {
+                if ((int)($row['is_selected'] ?? 0) !== 1) return false;
+            } elseif ($approval === 'not_selected') {
+                if ((int)($row['is_selected'] ?? 0) !== 0) return false;
+            } elseif ($approval === 'account_entry') {
+                $isAcct = !empty($row['voucher_id']) || in_array(strtoupper((string)$row['reference_type']), ['RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'OPENING'], true);
+                if (!$isAcct) return false;
+            } elseif ($approval === 'repair') {
+                $isRepair = stripos((string)$row['voucher_type'], 'REPAIR') !== false || stripos((string)$row['narration'], 'REPAIR') !== false;
+                if (!$isRepair) return false;
+            }
+            if ($diaFilter === 'diamond' && (float)$row['diamond_weight'] <= 0) return false;
+            if ($diaFilter === 'stone' && (float)$row['stone_weight'] <= 0) return false;
+            return true;
+        }));
+
+        // Optional merge modes
+        $mergeMode = strtolower(trim((string)($filters['merge'] ?? '')));
+        if ($mergeMode !== '' && $mergeMode !== '0' && $mergeMode !== 'false' && $mergeMode !== 'no') {
+            $mergedMap = [];
+            foreach ($filtered as $row) {
+                $base = $row['posting_date'] . '|' . $row['voucher_type'] . '|' . $row['reference_no'];
+                $isStudded = ((float)$row['diamond_weight'] > 0 || (float)$row['stone_weight'] > 0) ? '1' : '0';
+                $k = match ($mergeMode) {
+                    'item_stamp_studed'   => $base . '|' . $row['item_name'] . '|' . $row['stamp'] . '|' . $isStudded,
+                    'item_remarks_studed' => $base . '|' . $row['item_name'] . '|' . $row['remarks'] . '|' . $isStudded,
+                    'type_remarks_studed' => $base . '|' . $row['item_type'] . '|' . $row['remarks'] . '|' . $isStudded,
+                    'item_stamp'          => $base . '|' . $row['item_name'] . '|' . $row['stamp'],
+                    'item_type'           => $base . '|' . $row['item_type'],
+                    'item_rate'           => $base . '|' . $row['item_name'] . '|' . ($row['debit'] ?: $row['credit']),
+                    default               => $base,
+                };
+                if (!isset($mergedMap[$k])) {
+                    $mergedMap[$k] = $row;
+                } else {
+                    $mergedMap[$k]['debit'] = round($mergedMap[$k]['debit'] + $row['debit'], 2);
+                    $mergedMap[$k]['credit'] = round($mergedMap[$k]['credit'] + $row['credit'], 2);
+                    $mergedMap[$k]['gold_fine_dr'] = round($mergedMap[$k]['gold_fine_dr'] + $row['gold_fine_dr'], 3);
+                    $mergedMap[$k]['gold_fine_cr'] = round($mergedMap[$k]['gold_fine_cr'] + $row['gold_fine_cr'], 3);
+                    $mergedMap[$k]['silver_fine_dr'] = round($mergedMap[$k]['silver_fine_dr'] + $row['silver_fine_dr'], 3);
+                    $mergedMap[$k]['silver_fine_cr'] = round($mergedMap[$k]['silver_fine_cr'] + $row['silver_fine_cr'], 3);
+                    $mergedMap[$k]['diamond_weight'] = round($mergedMap[$k]['diamond_weight'] + $row['diamond_weight'], 3);
+                    $mergedMap[$k]['stone_weight'] = round($mergedMap[$k]['stone_weight'] + $row['stone_weight'], 3);
+                }
+            }
+            $filtered = array_values($mergedMap);
+        }
+
+        // Calculate running balances (Amount, Gold, Silver) + summary totals
+        $netAmount = 0.0;
+        $netGold = 0.0;
+        $netSilver = 0.0;
+        $totDr = 0.0; $totCr = 0.0;
+        $totGoldDr = 0.0; $totGoldCr = 0.0;
+        $totSilverDr = 0.0; $totSilverCr = 0.0;
+        $runningSum = 0.0;
+
+        foreach ($filtered as &$row) {
+            $totDr += $row['debit'];
+            $totCr += $row['credit'];
+            $totGoldDr += $row['gold_fine_dr'];
+            $totGoldCr += $row['gold_fine_cr'];
+            $totSilverDr += $row['silver_fine_dr'];
+            $totSilverCr += $row['silver_fine_cr'];
+
+            $netAmount += ($row['debit'] - $row['credit']);
+            $netGold += ($row['gold_fine_dr'] - $row['gold_fine_cr']);
+            $netSilver += ($row['silver_fine_dr'] - $row['silver_fine_cr']);
+
+            $row['running_balance'] = round(abs($netAmount), 2);
+            $row['balance_type'] = $netAmount >= 0 ? 'DR' : 'CR';
+            $row['running_gold_balance'] = round(abs($netGold), 3);
+            $row['gold_balance_type'] = $netGold >= 0 ? 'DR' : 'CR';
+            $row['running_silver_balance'] = round(abs($netSilver), 3);
+            $row['silver_balance_type'] = $netSilver >= 0 ? 'DR' : 'CR';
+
+            $runningSum += $netAmount;
+        }
+        unset($row);
+
+        $avgBalance = count($filtered) > 0 ? round($runningSum / count($filtered), 2) : 0.0;
+
         return [
             'ledger' => $ledger,
-            'entries' => $rows,
-            'closing_balance' => abs($balance),
-            'closing_balance_type' => $balance >= 0 ? 'DR' : 'CR',
+            'entries' => $filtered,
+            'closing_balance' => round(abs($netAmount), 2),
+            'closing_balance_type' => $netAmount >= 0 ? 'DR' : 'CR',
+            'closing_gold_balance' => round(abs($netGold), 3),
+            'closing_gold_type' => $netGold >= 0 ? 'DR' : 'CR',
+            'closing_silver_balance' => round(abs($netSilver), 3),
+            'closing_silver_type' => $netSilver >= 0 ? 'DR' : 'CR',
+            'summary' => [
+                'total_debit' => round($totDr, 2),
+                'total_credit' => round($totCr, 2),
+                'total_gold_debit' => round($totGoldDr, 3),
+                'total_gold_credit' => round($totGoldCr, 3),
+                'total_silver_debit' => round($totSilverDr, 3),
+                'total_silver_credit' => round($totSilverCr, 3),
+                'average_balance' => round(abs($avgBalance), 2),
+                'average_balance_type' => $avgBalance >= 0 ? 'DR' : 'CR',
+                'entry_count' => count($filtered),
+            ],
         ];
     }
 

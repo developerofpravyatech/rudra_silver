@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Save, ArrowLeft, AlertCircle, Loader2, Printer, CheckSquare, FileDown } from 'lucide-react';
+import { ReceiptVoucherForm } from './ReceiptVoucherForm';
+import { PaymentVoucherForm } from './PaymentVoucherForm';
+import { ContraVoucherForm } from './ContraVoucherForm';
+import { JournalVoucherForm } from './JournalVoucherForm';
 import type { AccountingVoucherType, OpenInvoiceItem, VoucherAllocationInput } from '../../types';
 import { printVoucherPdf, downloadVoucherPdf } from '../../utils/reportPdf';
 import { reqDate, reqSelect, reqPositiveNum, focusFirstError, FieldErrors } from '../../utils/validation';
 import {
   fetchLedgerDropdown,
+  fetchLedgerBalance,
   fetchNextVoucherNo,
   createAccountingVoucher,
   updateAccountingVoucher,
   fetchAccountingVoucherById,
   fetchOpenInvoicesForVoucher,
+  type LedgerBalanceResult,
 } from '../../services/api';
 
 interface EntryRow {
@@ -57,6 +63,9 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
 
   const [accounts, setAccounts] = useState<Array<{ id: number; name: string; account_type: string }>>([]);
   const [ledgerList, setLedgerList] = useState<Array<{ id: number; ledger_name: string; ledger_code: string; group_name: string }>>([]);
+  const [ledgerBalances, setLedgerBalances] = useState<Record<number, LedgerBalanceResult>>({});
+  const [balanceLoading, setBalanceLoading] = useState<Record<number, boolean>>({});
+  const [balanceErrors, setBalanceErrors] = useState<Record<number, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +105,8 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
             credit_amount: Number(e.credit_amount),
             narration: e.narration || '',
           })));
+          const uniqueIds = Array.from(new Set<number>(v.entries.map((e: any) => Number(e.ledger_id)).filter((id: number) => id > 0)));
+          uniqueIds.forEach((lid) => { void loadLedgerBalance(lid); });
         }
         if (Array.isArray(v.allocations)) {
           const m: Record<string, number> = {};
@@ -117,6 +128,27 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
     }
   }, [activeType, accountId]);
 
+  const loadLedgerBalance = async (ledgerId: number) => {
+    if (!ledgerId || ledgerId <= 0) return;
+    setBalanceLoading(prev => ({ ...prev, [ledgerId]: true }));
+    setBalanceErrors(prev => {
+      if (!prev[ledgerId]) return prev;
+      const next = { ...prev };
+      delete next[ledgerId];
+      return next;
+    });
+    try {
+      const data = await fetchLedgerBalance(ledgerId, {
+        excludeVoucherId: isEdit && voucherId ? voucherId : null,
+      });
+      setLedgerBalances(prev => ({ ...prev, [ledgerId]: data }));
+    } catch {
+      setBalanceErrors(prev => ({ ...prev, [ledgerId]: true }));
+    } finally {
+      setBalanceLoading(prev => ({ ...prev, [ledgerId]: false }));
+    }
+  };
+
   const addEntryRow = () => setEntries(prev => [...prev, { ...BLANK_ENTRY }]);
   const removeEntryRow = (i: number) => {
     if (entries.length <= 2) return;
@@ -129,6 +161,9 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
     const ledger = ledgerList.find(l => l.id === ledgerId);
     updateEntry(i, 'ledger_id', ledgerId);
     updateEntry(i, 'ledger_name', ledger?.ledger_name || '');
+    if (ledgerId > 0) {
+      void loadLedgerBalance(ledgerId);
+    }
   };
 
   const totalDr = entries.reduce((s, e) => s + Number(e.debit_amount), 0);
@@ -237,6 +272,22 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
       <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
     </div>
   );
+
+  if ((activeType as string) === 'RECEIPT' && !fetchLoading) {
+    return <ReceiptVoucherForm voucherId={voucherId} onBack={onBack} onSuccess={onSuccess} />;
+  }
+
+  if ((activeType as string) === 'PAYMENT' && !fetchLoading) {
+    return <PaymentVoucherForm voucherId={voucherId} onBack={onBack} onSuccess={onSuccess} />;
+  }
+
+  if ((activeType as string) === 'CONTRA' && !fetchLoading) {
+    return <ContraVoucherForm voucherId={voucherId} onBack={onBack} onSuccess={onSuccess} />;
+  }
+
+  if ((activeType as string) === 'JOURNAL' && !fetchLoading) {
+    return <JournalVoucherForm voucherId={voucherId} onBack={onBack} onSuccess={onSuccess} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#f4f6f9] dark:bg-[#080a0d] p-4 md:p-6">
@@ -460,15 +511,20 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 dark:bg-white/[0.03]">
                     <tr>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 w-5/12">Ledger</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 w-4/12">Ledger</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-400 w-2/12">Balance</th>
                       <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-400 w-2/12">Debit (₹)</th>
                       <th className="px-3 py-2 text-right font-semibold text-slate-600 dark:text-slate-400 w-2/12">Credit (₹)</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 w-2.5/12">Narration</th>
-                      <th className="px-3 py-2 w-0.5/12"></th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 dark:text-slate-400 w-2/12">Narration</th>
+                      <th className="px-3 py-2 w-8"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
-                    {entries.map((row, i) => (
+                    {entries.map((row, i) => {
+                      const bal = row.ledger_id > 0 ? ledgerBalances[row.ledger_id] : undefined;
+                      const isBalLoading = row.ledger_id > 0 && Boolean(balanceLoading[row.ledger_id]);
+                      const hasBalError = row.ledger_id > 0 && Boolean(balanceErrors[row.ledger_id]);
+                      return (
                       <tr key={i}>
                         <td className="px-2 py-1.5">
                           <select value={row.ledger_id} onChange={(e) => selectEntryLedger(i, Number(e.target.value))}
@@ -476,6 +532,32 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
                             <option value="">-- Select Ledger --</option>
                             {ledgerList.map(l => <option key={l.id} value={l.id}>{l.ledger_name} ({l.group_name})</option>)}
                           </select>
+                        </td>
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap font-mono">
+                          {row.ledger_id <= 0 ? (
+                            <span className="text-slate-400">—</span>
+                          ) : isBalLoading ? (
+                            <span className="inline-flex items-center gap-1 text-slate-400">
+                              <Loader2 className="w-3 h-3 animate-spin" /> Loading...
+                            </span>
+                          ) : hasBalError ? (
+                            <span className="text-rose-500">N/A</span>
+                          ) : bal ? (
+                            <div className="leading-tight">
+                              <span className={`font-semibold ${bal.balance_type === 'DR' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                {Number(bal.balance).toFixed(2)} {bal.balance_type === 'DR' ? 'Dr' : 'Cr'}
+                              </span>
+                              {((bal.fine_gold ?? 0) !== 0 || (bal.fine_silver ?? 0) !== 0) && (
+                                <div className="text-[10px] text-slate-400">
+                                  {(bal.fine_gold ?? 0) !== 0 ? `Au ${Number(bal.fine_gold).toFixed(3)}g` : ''}
+                                  {(bal.fine_gold ?? 0) !== 0 && (bal.fine_silver ?? 0) !== 0 ? ' · ' : ''}
+                                  {(bal.fine_silver ?? 0) !== 0 ? `Ag ${Number(bal.fine_silver).toFixed(3)}g` : ''}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
                         </td>
                         <td className="px-2 py-1.5">
                           <input type="number" min="0" step="0.01" value={row.debit_amount || ''} onChange={(e) => updateEntry(i, 'debit_amount', Number(e.target.value))}
@@ -496,11 +578,13 @@ export const AccountingVoucherForm: React.FC<Props> = ({ voucherType, voucherId,
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-slate-50/80 dark:bg-white/[0.02] border-t border-slate-200 dark:border-white/10">
                     <tr>
                       <td className="px-3 py-2 font-semibold text-slate-600 dark:text-slate-400">Total</td>
+                      <td className="px-3 py-2"></td>
                       <td className="px-3 py-2 text-right font-bold text-emerald-600 dark:text-emerald-400">{totalDr.toFixed(2)}</td>
                       <td className="px-3 py-2 text-right font-bold text-rose-600 dark:text-rose-400">{totalCr.toFixed(2)}</td>
                       <td colSpan={2} className="px-3 py-2 text-right">

@@ -80,13 +80,34 @@ class AccountingVoucherController {
 
         // Get journal entries
         $entries = $db->prepare("
-            SELECT ve.*, l.ledger_name, l.ledger_code
+            SELECT ve.*, l.ledger_name, l.ledger_code, l.account_ref_id, ag.name AS group_name
             FROM voucher_entries ve
             JOIN ledgers l ON l.id = ve.ledger_id
+            LEFT JOIN account_groups ag ON ag.id = l.group_id
             WHERE ve.voucher_id = :id
+            ORDER BY ve.id ASC
         ");
         $entries->execute(['id' => $id]);
         $voucher['entries'] = $entries->fetchAll(PDO::FETCH_ASSOC);
+
+        // Adjacent voucher IDs (Previous / Next) for same voucher_type
+        $prevStmt = $db->prepare("
+            SELECT id FROM vouchers
+            WHERE voucher_type = :vtype AND deleted_at IS NULL
+              AND (voucher_no < :vno OR (voucher_no = :vno2 AND id < :id))
+            ORDER BY voucher_no DESC, id DESC LIMIT 1
+        ");
+        $prevStmt->execute(['vtype' => $voucher['voucher_type'], 'vno' => $voucher['voucher_no'], 'vno2' => $voucher['voucher_no'], 'id' => $id]);
+        $voucher['prev_id'] = $prevStmt->fetchColumn() ?: null;
+
+        $nextStmt = $db->prepare("
+            SELECT id FROM vouchers
+            WHERE voucher_type = :vtype AND deleted_at IS NULL
+              AND (voucher_no > :vno OR (voucher_no = :vno2 AND id > :id))
+            ORDER BY voucher_no ASC, id ASC LIMIT 1
+        ");
+        $nextStmt->execute(['vtype' => $voucher['voucher_type'], 'vno' => $voucher['voucher_no'], 'vno2' => $voucher['voucher_no'], 'id' => $id]);
+        $voucher['next_id'] = $nextStmt->fetchColumn() ?: null;
 
         // Get invoice allocations
         $allocs = $db->prepare("SELECT * FROM voucher_allocations WHERE voucher_id = :id ORDER BY id ASC");
@@ -97,6 +118,59 @@ class AccountingVoucherController {
     }
 
     public static function getById(int $id = 0): void { self::view($id); }
+
+    public static function branches(): void {
+        $db = Database::getConnection();
+        $rows = $db->query("SELECT id, code, name, city FROM branches WHERE is_active = 1 ORDER BY id ASC")->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['success' => true, 'data' => $rows]);
+    }
+
+    public static function adjacent(): void {
+        $vtype = strtoupper($_GET['voucher_type'] ?? 'RECEIPT');
+        $currentId = (int)($_GET['current_id'] ?? 0);
+        $direction = strtolower($_GET['direction'] ?? 'prev');
+        $db = Database::getConnection();
+
+        if ($currentId <= 0) {
+            // From a new voucher, "prev" returns the latest saved voucher of this type
+            $stmt = $db->prepare("
+                SELECT id FROM vouchers
+                WHERE voucher_type = :vtype AND deleted_at IS NULL
+                ORDER BY voucher_no DESC, id DESC LIMIT 1
+            ");
+            $stmt->execute(['vtype' => $vtype]);
+            $id = $stmt->fetchColumn() ?: null;
+            echo json_encode(['success' => true, 'id' => $id ? (int)$id : null]);
+            return;
+        }
+
+        $curStmt = $db->prepare("SELECT voucher_no FROM vouchers WHERE id = :id LIMIT 1");
+        $curStmt->execute(['id' => $currentId]);
+        $curNo = $curStmt->fetchColumn();
+        if ($curNo === false) {
+            echo json_encode(['success' => true, 'id' => null]);
+            return;
+        }
+
+        if ($direction === 'next') {
+            $stmt = $db->prepare("
+                SELECT id FROM vouchers
+                WHERE voucher_type = :vtype AND deleted_at IS NULL
+                  AND (voucher_no > :vno OR (voucher_no = :vno2 AND id > :id))
+                ORDER BY voucher_no ASC, id ASC LIMIT 1
+            ");
+        } else {
+            $stmt = $db->prepare("
+                SELECT id FROM vouchers
+                WHERE voucher_type = :vtype AND deleted_at IS NULL
+                  AND (voucher_no < :vno OR (voucher_no = :vno2 AND id < :id))
+                ORDER BY voucher_no DESC, id DESC LIMIT 1
+            ");
+        }
+        $stmt->execute(['vtype' => $vtype, 'vno' => (int)$curNo, 'vno2' => (int)$curNo, 'id' => $currentId]);
+        $id = $stmt->fetchColumn() ?: null;
+        echo json_encode(['success' => true, 'id' => $id ? (int)$id : null]);
+    }
 
     public static function openInvoices(): void {
         $vtype = strtoupper($_GET['voucher_type'] ?? 'RECEIPT');
@@ -118,13 +192,17 @@ class AccountingVoucherController {
             echo json_encode(['success' => false, 'message' => 'Invalid voucher type']);
             return;
         }
-        if (empty($data['account_id'])) {
+        $hasEntries = !empty($data['entries']) && is_array($data['entries']);
+        if (empty($data['account_id']) && !$hasEntries) {
             http_response_code(422);
             echo json_encode(['success' => false, 'message' => 'Account is required']);
             return;
         }
         $amount = (float)($data['amount'] ?? $data['net_amount'] ?? 0);
-        if ($amount <= 0 && empty($data['entries'])) {
+        if ($amount <= 0 && $hasEntries) {
+            $amount = array_reduce($data['entries'], fn($s, $e) => $s + (float)($e['credit'] ?? $e['credit_amount'] ?? 0), 0.0);
+        }
+        if ($amount <= 0) {
             http_response_code(422);
             echo json_encode(['success' => false, 'message' => 'Amount must be greater than zero']);
             return;
@@ -133,41 +211,61 @@ class AccountingVoucherController {
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
-            $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
-            $stmt->execute(['vtype' => $voucherType]);
+            $series = strtoupper(trim($data['series'] ?? substr($voucherType, 0, 3))) ?: substr($voucherType, 0, 3);
+            $branchId = max(1, (int)($data['branch_id'] ?? 1));
+            $isPdc = !empty($data['is_pdc']) ? 1 : 0;
+
+            if ($voucherType === 'RECEIPT') {
+                $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype AND series = :series");
+                $stmt->execute(['vtype' => $voucherType, 'series' => $series]);
+            } else {
+                $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
+                $stmt->execute(['vtype' => $voucherType]);
+            }
             $nextNo = ((int)$stmt->fetchColumn()) + 1;
 
             $vDate = $data['voucher_date'] ?? date('Y-m-d');
             $paymentMode = strtoupper($data['payment_mode'] ?? 'CASH');
-            $series = substr($voucherType, 0, 3);
+
+            $accId = (int)($data['account_id'] ?? 0);
+            $secAccId = !empty($data['second_account_id']) ? (int)$data['second_account_id'] : null;
+            if ($accId <= 0 && $hasEntries) {
+                [$accId, $secAccId] = self::resolveAccountsFromEntries($data['entries'], $db);
+            }
+            if ($accId <= 0) {
+                $accId = (int)($db->query("SELECT id FROM accounts ORDER BY id ASC LIMIT 1")->fetchColumn() ?: 1);
+            }
 
             $vStmt = $db->prepare("
                 INSERT INTO vouchers (voucher_no, series, branch_id, voucher_type, voucher_date,
-                    account_id, second_account_id, net_amount, payment_mode, narration, status, created_at, updated_at)
-                VALUES (:vno, :series, 1, :vtype, :vdate, :acc_id, :sec_acc_id, :amount, :pmode, :narration, 'POSTED', NOW(), NOW())
+                    account_id, second_account_id, net_amount, payment_mode, is_pdc, narration, status, created_at, updated_at)
+                VALUES (:vno, :series, :branch_id, :vtype, :vdate, :acc_id, :sec_acc_id, :amount, :pmode, :is_pdc, :narration, 'POSTED', NOW(), NOW())
             ");
             $vStmt->execute([
                 'vno'        => $nextNo,
                 'series'     => $series,
+                'branch_id'  => $branchId,
                 'vtype'      => $voucherType,
                 'vdate'      => $vDate,
-                'acc_id'     => (int)$data['account_id'],
-                'sec_acc_id' => !empty($data['second_account_id']) ? (int)$data['second_account_id'] : null,
+                'acc_id'     => $accId,
+                'sec_acc_id' => $secAccId,
                 'amount'     => $amount,
                 'pmode'      => $paymentMode,
+                'is_pdc'     => $isPdc,
                 'narration'  => $data['narration'] ?? null,
             ]);
             $voucherId = (int)$db->lastInsertId();
 
             // Post accounting entries
-            if (!empty($data['entries']) && is_array($data['entries'])) {
+            if ($hasEntries) {
                 $normalized = [];
                 foreach ($data['entries'] as $e) {
                     $normalized[] = [
-                        'ledger_id' => (int)$e['ledger_id'],
-                        'debit'     => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
-                        'credit'    => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
-                        'narration' => $e['narration'] ?? ($data['narration'] ?? ''),
+                        'ledger_id'   => (int)$e['ledger_id'],
+                        'sub_account' => $e['sub_account'] ?? null,
+                        'debit'       => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
+                        'credit'      => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
+                        'narration'   => $e['narration'] ?? ($data['narration'] ?? ''),
                     ];
                 }
                 AccountingEngine::post($voucherId, $voucherType, $vDate, $normalized, $data['narration'] ?? '');
@@ -180,13 +278,13 @@ class AccountingVoucherController {
             }
 
             // Apply invoice allocations for RECEIPT / PAYMENT
-            if (in_array($voucherType, ['RECEIPT', 'PAYMENT'])) {
+            if (in_array($voucherType, ['RECEIPT', 'PAYMENT']) && !empty($data['account_id'])) {
                 $allocations = is_array($data['allocations'] ?? null) ? $data['allocations'] : [];
-                VoucherAllocationService::applyAllocations($voucherId, $voucherType, (int)$data['account_id'], $amount, $allocations);
+                VoucherAllocationService::applyAllocations($voucherId, $voucherType, $accId, $amount, $allocations);
             }
 
             $db->commit();
-            echo json_encode(['success' => true, 'message' => 'Voucher created', 'voucher_id' => $voucherId, 'voucher_no' => $nextNo]);
+            echo json_encode(['success' => true, 'message' => 'Voucher created', 'voucher_id' => $voucherId, 'voucher_no' => $nextNo, 'series' => $series]);
         } catch (\Exception $e) {
             $db->rollBack();
             http_response_code(422);
@@ -202,39 +300,62 @@ class AccountingVoucherController {
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
-            $curStmt = $db->prepare("SELECT voucher_type, voucher_date, account_id, net_amount FROM vouchers WHERE id = :id");
+            $curStmt = $db->prepare("SELECT voucher_type, series, branch_id, is_pdc, voucher_date, account_id, second_account_id, net_amount FROM vouchers WHERE id = :id");
             $curStmt->execute(['id' => $id]);
             $v = $curStmt->fetch(PDO::FETCH_ASSOC);
             if (!$v) throw new \Exception('Voucher not found');
 
             $voucherType = $v['voucher_type'];
             $vDate = $data['voucher_date'] ?? $v['voucher_date'];
+            $series = strtoupper(trim($data['series'] ?? $v['series'] ?? substr($voucherType, 0, 3))) ?: substr($voucherType, 0, 3);
+            $branchId = max(1, (int)($data['branch_id'] ?? $v['branch_id'] ?? 1));
+            $isPdc = isset($data['is_pdc']) ? (!empty($data['is_pdc']) ? 1 : 0) : (int)$v['is_pdc'];
+
+            $hasEntries = !empty($data['entries']) && is_array($data['entries']);
             $accId = (int)($data['account_id'] ?? $v['account_id']);
+            $secAccId = array_key_exists('second_account_id', $data)
+                ? (!empty($data['second_account_id']) ? (int)$data['second_account_id'] : null)
+                : ($v['second_account_id'] ? (int)$v['second_account_id'] : null);
+
+            if ($hasEntries && empty($data['account_id'])) {
+                [$resolvedAcc, $resolvedSec] = self::resolveAccountsFromEntries($data['entries'], $db);
+                if ($resolvedAcc > 0) $accId = $resolvedAcc;
+                if ($resolvedSec !== null) $secAccId = $resolvedSec;
+            }
+
             $amount = (float)($data['amount'] ?? $data['net_amount'] ?? $v['net_amount']);
+            if ($hasEntries && !isset($data['amount']) && !isset($data['net_amount'])) {
+                $amount = array_reduce($data['entries'], fn($s, $e) => $s + (float)($e['credit'] ?? $e['credit_amount'] ?? 0), 0.0);
+            }
             $paymentMode = strtoupper($data['payment_mode'] ?? 'CASH');
 
             $db->prepare("
-                UPDATE vouchers SET voucher_date=:vdate, account_id=:acc_id, second_account_id=:sec_acc_id,
+                UPDATE vouchers SET series=:series, branch_id=:branch_id, is_pdc=:is_pdc,
+                    voucher_date=:vdate, account_id=:acc_id, second_account_id=:sec_acc_id,
                     net_amount=:amount, payment_mode=:pmode, narration=:narration, updated_at=NOW()
                 WHERE id=:id
             ")->execute([
+                'series'     => $series,
+                'branch_id'  => $branchId,
+                'is_pdc'     => $isPdc,
                 'vdate'      => $vDate,
                 'acc_id'     => $accId,
-                'sec_acc_id' => !empty($data['second_account_id']) ? (int)$data['second_account_id'] : null,
+                'sec_acc_id' => $secAccId,
                 'amount'     => $amount,
                 'pmode'      => $paymentMode,
                 'narration'  => $data['narration'] ?? null,
                 'id'         => $id,
             ]);
 
-            if (!empty($data['entries']) && is_array($data['entries'])) {
+            if ($hasEntries) {
                 $normalized = [];
                 foreach ($data['entries'] as $e) {
                     $normalized[] = [
-                        'ledger_id' => (int)$e['ledger_id'],
-                        'debit'     => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
-                        'credit'    => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
-                        'narration' => $e['narration'] ?? ($data['narration'] ?? ''),
+                        'ledger_id'   => (int)$e['ledger_id'],
+                        'sub_account' => $e['sub_account'] ?? null,
+                        'debit'       => (float)($e['debit'] ?? $e['debit_amount'] ?? 0),
+                        'credit'      => (float)($e['credit'] ?? $e['credit_amount'] ?? 0),
+                        'narration'   => $e['narration'] ?? ($data['narration'] ?? ''),
                     ];
                 }
                 AccountingEngine::post($id, $voucherType, $vDate, $normalized, $data['narration'] ?? '');
@@ -245,7 +366,7 @@ class AccountingVoucherController {
                 }
             }
 
-            if (in_array($voucherType, ['RECEIPT', 'PAYMENT'])) {
+            if (in_array($voucherType, ['RECEIPT', 'PAYMENT']) && !empty($data['account_id'])) {
                 $allocations = is_array($data['allocations'] ?? null) ? $data['allocations'] : [];
                 VoucherAllocationService::applyAllocations($id, $voucherType, $accId, $amount, $allocations);
             }
@@ -280,11 +401,38 @@ class AccountingVoucherController {
 
     public static function nextVoucherNo(): void {
         $vtype = strtoupper($_GET['voucher_type'] ?? 'RECEIPT');
+        $series = isset($_GET['series']) ? strtoupper(trim($_GET['series'])) : '';
         $db = Database::getConnection();
-        $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
-        $stmt->execute(['vtype' => $vtype]);
+        if ($vtype === 'RECEIPT' && $series !== '') {
+            $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype AND series = :series");
+            $stmt->execute(['vtype' => $vtype, 'series' => $series]);
+        } else {
+            $stmt = $db->prepare("SELECT MAX(voucher_no) FROM vouchers WHERE voucher_type = :vtype");
+            $stmt->execute(['vtype' => $vtype]);
+        }
         $last = (int)$stmt->fetchColumn();
         echo json_encode(['success' => true, 'next_no' => $last + 1]);
+    }
+
+    private static function resolveAccountsFromEntries(array $entries, PDO $db): array {
+        $crAccId = 0;
+        $drAccId = null;
+        $anyAccId = 0;
+        $stmt = $db->prepare("SELECT account_ref_id FROM ledgers WHERE id = :lid LIMIT 1");
+        foreach ($entries as $e) {
+            $lid = (int)($e['ledger_id'] ?? 0);
+            if ($lid <= 0) continue;
+            $stmt->execute(['lid' => $lid]);
+            $accRef = (int)($stmt->fetchColumn() ?: 0);
+            if ($accRef > 0) {
+                if ($anyAccId === 0) $anyAccId = $accRef;
+                $cr = (float)($e['credit'] ?? $e['credit_amount'] ?? 0);
+                $dr = (float)($e['debit'] ?? $e['debit_amount'] ?? 0);
+                if ($cr > 0 && $crAccId === 0) $crAccId = $accRef;
+                if ($dr > 0 && $drAccId === null) $drAccId = $accRef;
+            }
+        }
+        return [$crAccId > 0 ? $crAccId : $anyAccId, $drAccId];
     }
 
     private static function buildAutoEntries(string $voucherType, array $data, $db): array {

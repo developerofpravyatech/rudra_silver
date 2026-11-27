@@ -21,6 +21,7 @@ import { DailyBalanceListPage } from './components/dailyBalance/DailyBalanceList
 import { DailyBalanceAddPage } from './components/dailyBalance/DailyBalanceAddPage';
 import { DailyBalanceEditPage } from './components/dailyBalance/DailyBalanceEditPage';
 import { DailyBalancePage } from './components/DailyBalancePage';
+import { DailyEntryDashboard } from './components/DailyEntryDashboard';
 import { ItemListPage } from './components/items/ItemListPage';
 import { ItemAddPage } from './components/items/ItemAddPage';
 import { ItemEditPage } from './components/items/ItemEditPage';
@@ -125,6 +126,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     '/metal-stock-list': 'metal-stock',
     '/metal-stock/add': 'metal-stock-add',
     '/stock-status': 'stock-status',
+    '/daily-entry': 'daily-entry',
     '/daily-balance': 'daily-balance',
     '/daily-balance/add': 'daily-balance-add',
     '/transactions': 'transactions',
@@ -255,6 +257,7 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     'metal-stock-add': 'Add Metal Stock',
     'metal-stock-edit': 'Edit Metal Stock',
     'stock-status': 'Stock Status',
+    'daily-entry': 'Daily Entry',
     'daily-balance': 'Daily Balance',
     'daily-balance-add': 'Add Daily Balance',
     'daily-balance-edit': 'Edit Daily Balance',
@@ -265,6 +268,11 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     'silver-bullion-add': 'Add Silver Bullion',
     'silver-bullion-edit': 'Edit Silver Bullion',
     'party-ledgers': 'Party Ledgers',
+    'accounting-vouchers': 'Accounting Vouchers',
+    'ledger-master': 'Ledger Master',
+    'ledger-add': 'Add Ledger',
+    'ledger-edit': 'Edit Ledger',
+    'ledger-book': 'Ledger Statement',
     'invoice-history': 'Invoice History',
     reports: 'Reports',
     'scale-connection': 'Scale Connection',
@@ -283,6 +291,50 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
     setPreloadedBillingItem(item || null);
     setActiveSidebarTab('new-billing');
     setActiveTopTab('billing');
+  };
+
+  const handleDailyEntryVoucher = (type: string) => {
+    switch (type) {
+      case 'VOUCHER':
+        setActiveSidebarTab('accounting-vouchers');
+        navigate('/accounting-vouchers');
+        break;
+      case 'RECEIPT':
+        setActiveSidebarTab('accounting-vouchers');
+        navigate('/accounting-vouchers/receipt');
+        break;
+      case 'PAYMENT':
+        setActiveSidebarTab('accounting-vouchers');
+        navigate('/accounting-vouchers/payment');
+        break;
+      case 'CONTRA':
+        setActiveSidebarTab('accounting-vouchers');
+        navigate('/accounting-vouchers/contra');
+        break;
+      case 'JOURNAL':
+        setActiveSidebarTab('accounting-vouchers');
+        navigate('/accounting-vouchers/journal');
+        break;
+      case 'SALE':
+        setActiveSidebarTab('sale-register');
+        navigate('/sale-register');
+        break;
+      case 'PURCHASE':
+        setActiveSidebarTab('purchase-register');
+        navigate('/purchase-register');
+        break;
+      case 'SALE_RETURN':
+        setActiveSidebarTab('returns');
+        navigate('/returns?tab=sale');
+        break;
+      case 'PURCHASE_RETURN':
+        setActiveSidebarTab('returns');
+        navigate('/returns?tab=purchase');
+        break;
+      default:
+        handleOpenBilling(type);
+        break;
+    }
   };
 
   const handleSelectCategory = (catName: string) => {
@@ -1027,6 +1079,19 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
           />
         );
 
+      case 'daily-entry':
+        return (
+          <DailyEntryDashboard
+            summary={summary}
+            onOpenVoucher={handleDailyEntryVoucher}
+            onOpenLedger={() => {
+              setActiveSidebarTab('party-ledgers');
+              setActiveTopTab('reports');
+              navigate('/party-ledgers');
+            }}
+          />
+        );
+
       case 'reports':
         return (
           <ReportsPage
@@ -1130,8 +1195,9 @@ const MainApp: React.FC<MainAppProps> = ({ currentUser, onLogout }) => {
           navigate('/party-ledgers');
         }}
         onOpenDailyEntry={() => {
-          setActiveSidebarTab('reports');
-          setActiveTopTab('reports');
+          setActiveSidebarTab('daily-entry');
+          setActiveTopTab('daily-entry');
+          navigate('/daily-entry');
         }}
         onOpenCatalogue={() => {
           setSelectedCategory('Payal');

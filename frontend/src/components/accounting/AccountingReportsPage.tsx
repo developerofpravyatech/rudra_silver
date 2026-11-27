@@ -32,6 +32,19 @@ const TABS: Array<{ id: ReportTab; label: string }> = [
   { id: 'balance-sheet',          label: 'Balance Sheet' },
 ];
 
+const TAB_TITLES: Record<ReportTab, string> = {
+  'trial-balance':           'Trial Balance',
+  'day-book':                'Day Book',
+  'cash-book':               'Cash Book',
+  'bank-book':               'Bank Book',
+  'outstanding-receivable':  'Receivable',
+  'outstanding-payable':     'Payable',
+  'sales-invoices':          'Sales Invoices',
+  'purchase-invoices':       'Purchase Invoices',
+  'profit-loss':             'P & L Statement',
+  'balance-sheet':           'Balance Sheet',
+};
+
 const fmt = (n: number) => Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const NATURE_COLOR: Record<string, string> = {
@@ -384,7 +397,7 @@ export const AccountingReportsPage: React.FC<Props> = ({ onBackToDashboard }) =>
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-amber-500" />
-              Accounting Reports
+              {TAB_TITLES[activeTab]}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Financial reports from the double-entry accounting system</p>
           </div>

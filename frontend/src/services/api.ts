@@ -754,6 +754,76 @@ export async function deleteStockTypeApi(id: number): Promise<void> {
   }
 }
 
+// -------------------------------------------------------------
+// UNIT MASTER MODULE APIS
+// -------------------------------------------------------------
+export interface UnitRecord {
+  id: number;
+  code: string;
+  name: string;
+  is_active: number;
+  created_at?: string;
+}
+
+export async function fetchUnitsAll(search?: string): Promise<{ data: UnitRecord[]; counts: { total: number; active: number; inactive: number } }> {
+  const qs = new URLSearchParams();
+  if (search) qs.set('search', search);
+  const res = await fetch(`/api/units?${qs.toString()}`, { headers: getAuthHeaders() });
+  const json = await res.json().catch(() => ({ data: [], counts: { total: 0, active: 0, inactive: 0 } }));
+  if (!res.ok) throw new Error(json.error || json.message || 'Failed to fetch units');
+  return json;
+}
+
+export async function fetchUnitsActive(): Promise<UnitRecord[]> {
+  const res = await fetch('/api/units/active', { headers: getAuthHeaders() });
+  const json = await res.json().catch(() => ([]));
+  if (!res.ok) throw new Error((json as any).error || (json as any).message || 'Failed to fetch active units');
+  return Array.isArray(json) ? json : json.data || [];
+}
+
+export async function createUnitApi(data: { code: string; name: string; is_active?: number }): Promise<UnitRecord> {
+  const res = await fetch('/api/units', {
+    method: 'POST',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || json.message || 'Failed to create unit');
+  return json.data || json;
+}
+
+export async function updateUnitApi(id: number, data: { code: string; name: string; is_active: number }): Promise<UnitRecord> {
+  const res = await fetch(`/api/units/${id}`, {
+    method: 'PUT',
+    headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || json.message || 'Failed to update unit');
+  return json.data || json;
+}
+
+export async function toggleUnitStatusApi(id: number): Promise<UnitRecord> {
+  const res = await fetch(`/api/units/${id}/toggle`, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || json.message || 'Failed to toggle unit status');
+  return json.data || json;
+}
+
+export async function deleteUnitApi(id: number): Promise<void> {
+  const res = await fetch(`/api/units/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.error || json.message || 'Failed to delete unit');
+  }
+}
+
 export async function fetchAllCategoriesForExportApi(
   params: CategoryFilterParams = {}
 ): Promise<CategoryRecord[]> {
@@ -2463,13 +2533,111 @@ export async function deleteLedger(id: number): Promise<void> {
   if (!res.ok || !json.success) throw new Error(json.message || 'Failed to delete ledger.');
 }
 
-export async function fetchLedgerBook(id: number, from?: string, to?: string): Promise<{ ledger: Ledger; entries: LedgerPosting[]; closing_balance: number; closing_balance_type: 'DR' | 'CR' }> {
+export interface LedgerBalanceResult {
+  ledger_id: number;
+  total_debit: number;
+  total_credit: number;
+  balance: number;
+  balance_type: 'DR' | 'CR';
+  fine_gold?: number;
+  fine_silver?: number;
+}
+
+export async function fetchLedgerBalance(
+  id: number,
+  options?: { asOn?: string; excludeVoucherId?: number | null }
+): Promise<LedgerBalanceResult> {
+  const qs = new URLSearchParams({ id: String(id) });
+  if (options?.asOn) qs.set('as_on', options.asOn);
+  if (options?.excludeVoucherId) qs.set('exclude_voucher_id', String(options.excludeVoucherId));
+  const res = await fetch(`/api/ledger/balance?${qs.toString()}`, { headers: getAuthHeaders() });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load ledger balance.');
+  return json.data;
+}
+
+export interface LedgerBookEntry {
+  id: number;
+  ledger_id: number;
+  voucher_id: number | null;
+  reference_type: string | null;
+  reference_id: number | null;
+  voucher_type: string;
+  voucher_no: string | null;
+  series: string | null;
+  reference_no: string;
+  posting_date: string;
+  narration: string;
+  is_opening: number;
+  debit: number;
+  credit: number;
+  gold_fine_dr: number;
+  gold_fine_cr: number;
+  silver_fine_dr: number;
+  silver_fine_cr: number;
+  diamond_weight: number;
+  stone_weight: number;
+  is_approved: number;
+  is_excluded: number;
+  running_balance: number;
+  balance_type: 'DR' | 'CR';
+  running_gold_balance: number;
+  gold_balance_type: 'DR' | 'CR';
+  running_silver_balance: number;
+  silver_balance_type: 'DR' | 'CR';
+}
+
+export interface LedgerBookResponse {
+  ledger: Ledger & { photo?: string | null };
+  entries: LedgerBookEntry[];
+  closing_balance: number;
+  closing_balance_type: 'DR' | 'CR';
+  closing_gold_balance: number;
+  closing_gold_type: 'DR' | 'CR';
+  closing_silver_balance: number;
+  closing_silver_type: 'DR' | 'CR';
+  summary: {
+    total_debit: number;
+    total_credit: number;
+    total_gold_debit: number;
+    total_gold_credit: number;
+    total_silver_debit: number;
+    total_silver_credit: number;
+    average_balance: number;
+    average_balance_type: 'DR' | 'CR';
+    entry_count: number;
+  };
+}
+
+export interface LedgerBookFilters {
+  from?: string;
+  to?: string;
+  voucher_type?: string;
+  search?: string;
+  exclude?: boolean;
+  merge?: string;
+  approval?: string;
+  dia_filter?: string;
+}
+
+export async function fetchLedgerBook(
+  id: number,
+  from?: string,
+  to?: string,
+  filters?: LedgerBookFilters
+): Promise<LedgerBookResponse> {
   const qs = new URLSearchParams({ id: String(id) });
   if (from) qs.set('from', from);
   if (to) qs.set('to', to);
+  if (filters?.voucher_type && filters.voucher_type !== 'ALL') qs.set('voucher_type', filters.voucher_type);
+  if (filters?.search) qs.set('search', filters.search);
+  if (filters?.exclude) qs.set('exclude', '1');
+  if (filters?.merge && filters.merge !== 'no') qs.set('merge', filters.merge);
+  if (filters?.approval) qs.set('approval', filters.approval);
+  if (filters?.dia_filter) qs.set('dia_filter', filters.dia_filter);
   const res = await fetch(`/api/ledger/book?${qs.toString()}`, { headers: getAuthHeaders() });
-  if (!res.ok) throw new Error('Failed to load ledger book.');
-  const json = await res.json();
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) throw new Error(json.message || 'Failed to load ledger book.');
   return json.data;
 }
 
@@ -2491,11 +2659,32 @@ export async function fetchAccountingVoucherById(id: number): Promise<Accounting
   return json.data;
 }
 
-export async function fetchNextVoucherNo(type: string): Promise<number> {
-  const res = await fetch(`/api/accounting-vouchers/next-no?voucher_type=${encodeURIComponent(type)}`, { headers: getAuthHeaders() });
+export async function fetchNextVoucherNo(type: string, series?: string): Promise<number> {
+  const qs = new URLSearchParams({ voucher_type: type });
+  if (series) qs.set('series', series);
+  const res = await fetch(`/api/accounting-vouchers/next-no?${qs.toString()}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error('Failed to get next voucher number.');
   const json = await res.json();
   return json.next_no;
+}
+
+export async function fetchVoucherBranches(): Promise<Array<{ id: number; code: string; name: string; city?: string }>> {
+  const res = await fetch('/api/accounting-vouchers/branches', { headers: getAuthHeaders() });
+  if (!res.ok) return [{ id: 1, code: 'HO-RAJ', name: 'Rudra Silver Head Office' }];
+  const json = await res.json();
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+export async function fetchAdjacentVoucherId(type: string, currentId: number, direction: 'prev' | 'next'): Promise<number | null> {
+  const qs = new URLSearchParams({
+    voucher_type: type,
+    current_id: String(currentId),
+    direction,
+  });
+  const res = await fetch(`/api/accounting-vouchers/adjacent?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.id ? Number(json.id) : null;
 }
 
 export async function createAccountingVoucher(data: Partial<AccountingVoucher> & { amount?: number }): Promise<AccountingVoucher> {

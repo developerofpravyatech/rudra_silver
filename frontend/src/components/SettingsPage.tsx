@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, ArrowLeft, Save, Building2, Layers, Plus, Edit2, Trash2, X, Loader2, CheckCircle2 } from 'lucide-react';
+import { Settings as SettingsIcon, ArrowLeft, Save, Building2, Layers, Plus, Edit2, Trash2, X, Loader2, CheckCircle2, Package } from 'lucide-react';
 import Swal from 'sweetalert2';
 import {
   fetchStockTypesListApi,
@@ -7,6 +7,11 @@ import {
   updateStockTypeApi,
   deleteStockTypeApi,
   StockTypeRecord,
+  fetchUnitsAll,
+  createUnitApi,
+  updateUnitApi,
+  deleteUnitApi,
+  UnitRecord,
 } from '../services/api';
 
 interface SettingsPageProps {
@@ -36,6 +41,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
   const [nameError, setNameError] = useState<string | null>(null);
   const [modalSubmitting, setModalSubmitting] = useState(false);
 
+  // ---- Unit Management state ----
+  const [units, setUnits] = useState<UnitRecord[]>([]);
+  const [unitCounts, setUnitCounts] = useState({ total: 0, active: 0, inactive: 0 });
+  const [loadingUnits, setLoadingUnits] = useState(true);
+  const [unitSearch, setUnitSearch] = useState('');
+
+  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<UnitRecord | null>(null);
+  const [unitName, setUnitName] = useState('');
+  const [unitCode, setUnitCode] = useState('');
+  const [unitStatus, setUnitStatus] = useState<number>(1);
+  const [unitNameError, setUnitNameError] = useState<string | null>(null);
+  const [unitCodeError, setUnitCodeError] = useState<string | null>(null);
+  const [unitModalSubmitting, setUnitModalSubmitting] = useState(false);
+
   const loadStockTypes = async () => {
     try {
       setLoadingStockTypes(true);
@@ -51,6 +71,111 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
   useEffect(() => {
     loadStockTypes();
   }, []);
+
+  // ---- Unit load / CRUD functions ----
+  const loadUnits = async (search?: string) => {
+    try {
+      setLoadingUnits(true);
+      const result = await fetchUnitsAll(search);
+      setUnits(result.data);
+      setUnitCounts(result.counts);
+    } catch (err: any) {
+      console.error('Failed to load units:', err);
+    } finally {
+      setLoadingUnits(false);
+    }
+  };
+
+  useEffect(() => { loadUnits(); }, []);
+
+  const openAddUnitModal = () => {
+    setEditingUnit(null);
+    setUnitName('');
+    setUnitCode('');
+    setUnitStatus(1);
+    setUnitNameError(null);
+    setUnitCodeError(null);
+    setIsUnitModalOpen(true);
+  };
+
+  const openEditUnitModal = (unit: UnitRecord) => {
+    setEditingUnit(unit);
+    setUnitName(unit.name);
+    setUnitCode(unit.code);
+    setUnitStatus(unit.is_active ? 1 : 0);
+    setUnitNameError(null);
+    setUnitCodeError(null);
+    setIsUnitModalOpen(true);
+  };
+
+  const handleUnitModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimName = unitName.trim();
+    const trimCode = unitCode.trim().toUpperCase();
+    let hasError = false;
+    if (!trimName) { setUnitNameError('Unit Name is required.'); hasError = true; }
+    if (!trimCode) { setUnitCodeError('Unit Code / Symbol is required.'); hasError = true; }
+    if (hasError) return;
+
+    const dupName = units.find(u => u.name.toLowerCase() === trimName.toLowerCase() && (!editingUnit || u.id !== editingUnit.id));
+    if (dupName) { setUnitNameError(`Unit '${trimName}' already exists.`); return; }
+    const dupCode = units.find(u => u.code.toLowerCase() === trimCode.toLowerCase() && (!editingUnit || u.id !== editingUnit.id));
+    if (dupCode) { setUnitCodeError(`Unit Code '${trimCode}' already exists.`); return; }
+
+    setUnitModalSubmitting(true);
+    setUnitNameError(null);
+    setUnitCodeError(null);
+    try {
+      if (editingUnit) {
+        await updateUnitApi(editingUnit.id, { name: trimName, code: trimCode, is_active: unitStatus });
+        Swal.fire({ icon: 'success', title: 'Updated!', text: `Unit '${trimName}' updated successfully.`, timer: 1800, showConfirmButton: false });
+      } else {
+        await createUnitApi({ name: trimName, code: trimCode, is_active: unitStatus });
+        Swal.fire({ icon: 'success', title: 'Added!', text: `Unit '${trimName}' added successfully.`, timer: 1800, showConfirmButton: false });
+      }
+      setIsUnitModalOpen(false);
+      loadUnits(unitSearch || undefined);
+    } catch (err: any) {
+      const msg: string = err.message || 'Operation failed.';
+      if (msg.toLowerCase().includes('code')) setUnitCodeError(msg);
+      else setUnitNameError(msg);
+    } finally {
+      setUnitModalSubmitting(false);
+    }
+  };
+
+  const handleUnitDelete = async (unit: UnitRecord) => {
+    const result = await Swal.fire({
+      title: 'Delete Unit?',
+      text: `Are you sure you want to delete '${unit.name}' (${unit.code})? This action cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#e11d48',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Yes, Delete',
+      cancelButtonText: 'Cancel',
+    });
+
+    if (result.isConfirmed) {
+      try {
+        await deleteUnitApi(unit.id);
+        Swal.fire({
+          icon: 'success',
+          title: 'Deleted!',
+          text: `Unit '${unit.name}' has been deleted.`,
+          timer: 1800,
+          showConfirmButton: false,
+        });
+        loadUnits(unitSearch || undefined);
+      } catch (err: any) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Cannot Delete',
+          text: err.message || 'Failed to delete unit. It may be used in Stock or Metal Stock records.',
+        });
+      }
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,6 +392,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
                     className="w-full p-2 bg-white dark:bg-[#0b0e14] border border-slate-300 dark:border-white/[0.1] rounded text-slate-900 dark:text-white font-mono"
                   />
                 </div>
+
+              </div>
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-xl hover:brightness-105 transition shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Configuration</span>
+                </button>
               </div>
             </div>
 
@@ -302,7 +437,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
                   </div>
                 </div>
               </div>
-
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-xl hover:brightness-105 transition shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Save Configuration</span>
+                </button>
+              </div>
               {/* REPLACED SECTION: Stock Type Management */}
               <div className="bg-slate-50 dark:bg-[#141822] p-5 rounded-2xl border border-slate-200 dark:border-white/[0.08] space-y-4">
                 <div className="flex items-center justify-between">
@@ -357,11 +500,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                  st.is_active
-                                    ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30'
-                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
-                                }`}
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${st.is_active
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                                  }`}
                               >
                                 {st.is_active ? 'Active' : 'Inactive'}
                               </span>
@@ -394,15 +536,99 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
             </div>
           </div>
 
-          <div className="pt-2">
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold rounded-xl hover:brightness-105 transition shadow-sm flex items-center gap-2 cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Configuration</span>
-            </button>
+          {/* Unit Management — matching Stock Type Management design */}
+          <div className="bg-slate-50 dark:bg-[#141822] p-5 rounded-2xl border border-slate-200 dark:border-white/[0.08] space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2 text-slate-900 dark:text-white font-semibold text-sm">
+                <Package className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <h4>Unit Management</h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-normal mt-0.5">
+                    Manage measurement units used in Metal Stock &amp; Stock records.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={openAddUnitModal}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1 shadow-sm transition cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Unit</span>
+              </button>
+            </div>
+
+            {/* Units Table */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/[0.08] bg-white dark:bg-[#0b0e14]">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-white/[0.08] bg-slate-100 dark:bg-[#181d28] text-slate-600 dark:text-slate-300 font-medium">
+                    <th className="py-2.5 px-3">Code</th>
+                    <th className="py-2.5 px-3">Unit Name</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/[0.04]">
+                  {loadingUnits ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-slate-400">
+                        <Loader2 className="w-4 h-4 animate-spin inline-block mr-2" />
+                        Loading units...
+                      </td>
+                    </tr>
+                  ) : units.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-slate-400">
+                        No units found. Click "+ Add Unit" to create one.
+                      </td>
+                    </tr>
+                  ) : (
+                    units.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition">
+                        <td className="py-2.5 px-3 font-mono font-semibold text-amber-700 dark:text-amber-400">
+                          {u.code}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                          {u.name}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${u.is_active
+                              ? 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                              }`}
+                          >
+                            {u.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right space-x-1 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => openEditUnitModal(u)}
+                            className="p-1 rounded-md text-slate-500 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                            title="Edit Unit"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleUnitDelete(u)}
+                            className="p-1 rounded-md text-slate-500 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-white/10 transition cursor-pointer"
+                            title="Delete Unit"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+
         </form>
       </div>
 
@@ -440,11 +666,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
                   }}
                   placeholder="e.g. Finished, Raw, Scrap"
                   autoFocus
-                  className={`w-full p-2.5 bg-slate-50 dark:bg-[#181d28] border rounded-xl text-slate-900 dark:text-white transition focus:outline-none ${
-                    nameError
-                      ? 'border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20'
-                      : 'border-slate-300 dark:border-white/[0.1] focus:border-amber-500'
-                  }`}
+                  className={`w-full p-2.5 bg-slate-50 dark:bg-[#181d28] border rounded-xl text-slate-900 dark:text-white transition focus:outline-none ${nameError
+                    ? 'border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20'
+                    : 'border-slate-300 dark:border-white/[0.1] focus:border-amber-500'
+                    }`}
                 />
                 {nameError && (
                   <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">
@@ -487,6 +712,99 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToDashboard })
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>Saving...</span>
                     </>
+                  ) : (
+                    <span>Save</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Edit Unit Modal */}
+      {isUnitModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#11151e] border border-slate-200 dark:border-white/[0.1] rounded-2xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-white/[0.08] flex items-center justify-between">
+              <h3 className="font-semibold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <Package className="w-4 h-4 text-amber-500" />
+                <span>{editingUnit ? 'Edit Unit' : 'Add Unit'}</span>
+              </h3>
+              <button type="button" onClick={() => setIsUnitModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUnitModalSubmit} className="p-5 space-y-4 text-xs" noValidate>
+              {/* Unit Code */}
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
+                  Unit Code / Symbol <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={unitCode}
+                  onChange={(e) => { setUnitCode(e.target.value.toUpperCase()); if (unitCodeError) setUnitCodeError(null); }}
+                  placeholder="e.g. GMS, PCS, KG, CT"
+                  maxLength={20}
+                  autoFocus
+                  className={`w-full p-2.5 bg-slate-50 dark:bg-[#181d28] border rounded-xl text-slate-900 dark:text-white font-mono uppercase transition focus:outline-none ${unitCodeError
+                    ? 'border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20'
+                    : 'border-slate-300 dark:border-white/[0.1] focus:border-amber-500'
+                    }`}
+                />
+                {unitCodeError && <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">• {unitCodeError}</p>}
+              </div>
+
+              {/* Unit Name */}
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">
+                  Unit Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={unitName}
+                  onChange={(e) => { setUnitName(e.target.value); if (unitNameError) setUnitNameError(null); }}
+                  placeholder="e.g. Grams, Pieces, Kilograms, Carats"
+                  maxLength={50}
+                  className={`w-full p-2.5 bg-slate-50 dark:bg-[#181d28] border rounded-xl text-slate-900 dark:text-white transition focus:outline-none ${unitNameError
+                    ? 'border-rose-500 bg-rose-50/20 focus:ring-2 focus:ring-rose-500/20'
+                    : 'border-slate-300 dark:border-white/[0.1] focus:border-amber-500'
+                    }`}
+                />
+                {unitNameError && <p className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">• {unitNameError}</p>}
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-semibold mb-1">Status</label>
+                <select
+                  value={unitStatus}
+                  onChange={(e) => setUnitStatus(Number(e.target.value))}
+                  className="w-full p-2.5 bg-slate-50 dark:bg-[#181d28] border border-slate-300 dark:border-white/[0.1] rounded-xl text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value={1}>Active (Available in unit dropdowns)</option>
+                  <option value={0}>Inactive (Hidden from new entries)</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsUnitModalOpen(false)}
+                  disabled={unitModalSubmitting}
+                  className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/[0.1] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={unitModalSubmitting}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center gap-1.5 shadow-sm transition"
+                >
+                  {unitModalSubmitting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /><span>Saving...</span></>
                   ) : (
                     <span>Save</span>
                   )}

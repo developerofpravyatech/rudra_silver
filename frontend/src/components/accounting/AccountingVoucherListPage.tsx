@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, RefreshCw, Trash2, Eye, FileText, ChevronLeft, ChevronRight, AlertCircle, Printer, FileDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Search, RefreshCw, Trash2, Eye, FileText, ChevronLeft, ChevronRight, AlertCircle, Printer, FileDown, ShoppingBag, Receipt, RotateCcw, ArrowLeftRight, BookOpen, Wallet } from 'lucide-react';
 import type { AccountingVoucher, AccountingVoucherType } from '../../types';
 import { fetchAccountingVouchers, deleteAccountingVoucher } from '../../services/api';
 import { printReport, downloadReportPdf, ReportPdfOptions } from '../../utils/reportPdf';
@@ -24,7 +25,16 @@ const TYPE_BADGE: Record<string, string> = {
   JOURNAL: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400',
 };
 
+const VOUCHER_TITLES: Record<string, string> = {
+  RECEIPT: 'Receipt',
+  CONTRA: 'Contra',
+  JOURNAL: 'Journal',
+  PAYMENT: 'Payment',
+  ALL: 'All Vouchers',
+};
+
 export const AccountingVoucherListPage: React.FC<Props> = ({ onAdd, onView, onBackToDashboard }) => {
+  const navigate = useNavigate();
   const [vouchers, setVouchers] = useState<AccountingVoucher[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -133,7 +143,7 @@ export const AccountingVoucherListPage: React.FC<Props> = ({ onAdd, onView, onBa
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50 flex items-center gap-2">
               <FileText className="w-5 h-5 text-amber-500" />
-              Accounting Vouchers
+              {VOUCHER_TITLES[typeFilter || 'ALL']}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Receipt, Payment, Contra &amp; Journal entries</p>
           </div>
@@ -149,14 +159,111 @@ export const AccountingVoucherListPage: React.FC<Props> = ({ onAdd, onView, onBa
           </div>
         </div>
 
-        {/* Quick create buttons */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {VOUCHER_TYPES.map(({ type, label, color, bg }) => (
-            <button key={type} onClick={() => onAdd(type)}
-              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border ${bg} ${color} text-xs font-bold transition-all hover:shadow-sm active:scale-95`}>
-              <Plus className="w-4 h-4" /> {label}
-            </button>
-          ))}
+        {/* Voucher Modules Menu (All 8 Existing Vouchers) */}
+        <div className="bg-white dark:bg-[#12161f] border border-slate-200 dark:border-white/10 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Voucher Modules</h2>
+              <p className="text-[11px] text-slate-400">Select any voucher module to open or create an entry</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              {
+                key: 'SALE',
+                title: 'Sale',
+                subtitle: 'Sale Register',
+                icon: ShoppingBag,
+                cardClass: 'bg-amber-50/70 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400',
+                onOpen: () => navigate('/sale-register'),
+                onQuickAdd: () => navigate('/sale-register/add'),
+              },
+              {
+                key: 'PURCHASE',
+                title: 'Purchase',
+                subtitle: 'Purchase Register',
+                icon: Receipt,
+                cardClass: 'bg-indigo-50/70 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/20 text-indigo-700 dark:text-indigo-400',
+                onOpen: () => navigate('/purchase-register'),
+                onQuickAdd: () => navigate('/purchase-register/add'),
+              },
+              {
+                key: 'SALE_RETURN',
+                title: 'Sale Return',
+                subtitle: 'Customer Returns',
+                icon: RotateCcw,
+                cardClass: 'bg-orange-50/70 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/20 text-orange-700 dark:text-orange-400',
+                onOpen: () => navigate('/returns?tab=sale'),
+              },
+              {
+                key: 'PURCHASE_RETURN',
+                title: 'Purchase Return',
+                subtitle: 'Supplier Returns',
+                icon: RotateCcw,
+                cardClass: 'bg-teal-50/70 dark:bg-teal-500/10 border-teal-200 dark:border-teal-500/20 text-teal-700 dark:text-teal-400',
+                onOpen: () => navigate('/returns?tab=purchase'),
+              },
+              {
+                key: 'RECEIPT',
+                title: 'Receipt',
+                subtitle: 'F2 · Receive Payment',
+                icon: Wallet,
+                cardClass: 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                onOpen: () => onAdd('RECEIPT'),
+              },
+              {
+                key: 'PAYMENT',
+                title: 'Payment',
+                subtitle: 'F5 · Pay Supplier',
+                icon: Wallet,
+                cardClass: 'bg-rose-50/70 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-400',
+                onOpen: () => onAdd('PAYMENT'),
+              },
+              {
+                key: 'CONTRA',
+                title: 'Contra',
+                subtitle: 'F3 · Cash / Bank',
+                icon: ArrowLeftRight,
+                cardClass: 'bg-sky-50/70 dark:bg-sky-500/10 border-sky-200 dark:border-sky-500/20 text-sky-700 dark:text-sky-400',
+                onOpen: () => onAdd('CONTRA'),
+              },
+              {
+                key: 'JOURNAL',
+                title: 'Journal',
+                subtitle: 'F4 · Dr / Cr Entry',
+                icon: BookOpen,
+                cardClass: 'bg-purple-50/70 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/20 text-purple-700 dark:text-purple-400',
+                onOpen: () => onAdd('JOURNAL'),
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.key} className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${item.cardClass} transition-all hover:shadow-sm`}>
+                  <button
+                    type="button"
+                    onClick={item.onOpen}
+                    className="flex items-center gap-2.5 text-left flex-1 min-w-0 cursor-pointer"
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold truncate">{item.title}</div>
+                      <div className="text-[10px] opacity-75 truncate">{item.subtitle}</div>
+                    </div>
+                  </button>
+                  {item.onQuickAdd && (
+                    <button
+                      type="button"
+                      onClick={item.onQuickAdd}
+                      title={`New ${item.title}`}
+                      className="p-1.5 rounded-lg bg-white/70 dark:bg-black/20 hover:bg-white dark:hover:bg-black/40 transition-colors shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Filters */}

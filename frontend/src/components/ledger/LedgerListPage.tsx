@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Search, RefreshCw, Edit2, Trash2, ChevronLeft, ChevronRight,
-  BookOpen, AlertCircle, Eye, Filter, Download, Printer, FileDown
+  BookOpen, AlertCircle, Eye, Download, Printer, FileDown, ArrowUpDown
 } from 'lucide-react';
 import type { Ledger } from '../../types';
 import { fetchLedgers, deleteLedger, fetchLedgerFilterOptions, exportLedgerCsv } from '../../services/api';
@@ -28,18 +28,22 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [groupFilter, setGroupFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const [sortBy, setSortBy] = useState<string>('ledger_name');
+  const [sortDir, setSortDir] = useState<'ASC' | 'DESC'>('ASC');
   const [page, setPage] = useState(1);
-  const limit = 20;
+  const [limit, setLimit] = useState(10);
   const [filterOptions, setFilterOptions] = useState<{ groups: Array<{ id: number; name: string }>; cities: string[] }>({ groups: [], cities: [] });
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params: Record<string, string | number> = { page, limit };
+      const params: Record<string, string | number> = { page, limit, sort_by: sortBy, sort_dir: sortDir };
       if (search) params.search = search;
       if (groupFilter) params.group_id = groupFilter;
+      if (cityFilter) params.city = cityFilter;
       if (statusFilter) params.status = statusFilter;
       const res = await fetchLedgers(params);
       setLedgers(Array.isArray(res.data) ? res.data : []);
@@ -49,7 +53,17 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
     } finally {
       setLoading(false);
     }
-  }, [search, groupFilter, statusFilter, page, limit]);
+  }, [search, groupFilter, cityFilter, statusFilter, sortBy, sortDir, page, limit]);
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortDir(d => (d === 'ASC' ? 'DESC' : 'ASC'));
+    } else {
+      setSortBy(col);
+      setSortDir('ASC');
+    }
+    setPage(1);
+  };
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -163,6 +177,14 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
               {filterOptions.groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
             <select
+              value={cityFilter}
+              onChange={(e) => { setCityFilter(e.target.value); setPage(1); }}
+              className="px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-900 dark:text-slate-100 text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 min-w-[130px]"
+            >
+              <option value="">All Cities</option>
+              {filterOptions.cities.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-900 dark:text-slate-100 text-xs focus:outline-hidden focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500"
@@ -171,7 +193,7 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
             </select>
-            <button onClick={() => { setSearch(''); setGroupFilter(''); setStatusFilter('ACTIVE'); setPage(1); }}
+            <button onClick={() => { setSearch(''); setGroupFilter(''); setCityFilter(''); setStatusFilter('ACTIVE'); setSortBy('ledger_name'); setSortDir('ASC'); setPage(1); }}
               className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 text-xs font-medium hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
               <RefreshCw className="w-3.5 h-3.5" /> Reset
             </button>
@@ -190,13 +212,27 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
               <thead className="bg-slate-50 dark:bg-white/[0.03] border-b border-slate-200 dark:border-white/5">
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">#</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">Code</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">Ledger Name</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">Group</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">Mobile</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">City</th>
-                  <th className="px-4 py-3 text-right font-semibold text-slate-600 dark:text-slate-400">Opening Bal</th>
-                  <th className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400">Status</th>
+                  <th onClick={() => toggleSort('ledger_code')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">Code <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('ledger_name')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">Ledger Name <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('group_name')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">Group <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('mobile')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">Mobile <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('city')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">City <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('opening_balance')} className="px-4 py-3 text-right font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center justify-end gap-1">Opening Bal <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
+                  <th onClick={() => toggleSort('status')} className="px-4 py-3 text-left font-semibold text-slate-600 dark:text-slate-400 cursor-pointer hover:text-amber-600 select-none">
+                    <span className="inline-flex items-center gap-1">Status <ArrowUpDown className="w-3 h-3 opacity-60" /></span>
+                  </th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600 dark:text-slate-400">Actions</th>
                 </tr>
               </thead>
@@ -219,10 +255,14 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
                   </tr>
                 ) : (
                   ledgers.map((l, idx) => (
-                    <tr key={l.id} className="hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors">
+                    <tr
+                      key={l.id}
+                      onClick={() => onView(l.id)}
+                      className="hover:bg-amber-50/40 dark:hover:bg-white/[0.03] transition-colors cursor-pointer"
+                    >
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{(page - 1) * limit + idx + 1}</td>
                       <td className="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{l.ledger_code}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-slate-100">{l.ledger_name}</td>
+                      <td className="px-4 py-3 font-semibold text-amber-700 dark:text-amber-400 hover:underline">{l.ledger_name}</td>
                       <td className="px-4 py-3">
                         <div>
                           <p className="text-slate-700 dark:text-slate-200">{l.group_name}</p>
@@ -248,9 +288,9 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
                                                 : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-500'
                         }`}>{l.status}</span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => onView(l.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors" title="View Book">
+                          <button onClick={() => onView(l.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors" title="Open Ledger Statement">
                             <Eye className="w-4 h-4" />
                           </button>
                           <button onClick={() => onEdit(l.id)} className="p-1.5 rounded-lg text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors" title="Edit">
@@ -269,16 +309,27 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
           </div>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-white/5">
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total} ledgers
-              </span>
-              <div className="flex gap-2">
+          {total > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-white/5">
+              <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span>
+                  Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total} ledgers
+                </span>
+                <select
+                  value={limit}
+                  onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                  className="px-2 py-1 rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-700 dark:text-slate-200 text-xs"
+                >
+                  {[10, 20, 50, 100].map(n => (
+                    <option key={n} value={n}>{n} / page</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
                 <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="px-3 py-1.5 text-xs text-slate-500">Page {page} / {totalPages}</span>
+                <span className="px-3 py-1 text-xs font-medium text-slate-600 dark:text-slate-300">Page {page} / {totalPages}</span>
                 <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors">
                   <ChevronRight className="w-4 h-4" />
                 </button>

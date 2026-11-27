@@ -31,6 +31,7 @@ use Controllers\LedgerController;
 use Controllers\AccountingVoucherController;
 use Controllers\AccountingReportController;
 use Controllers\ReturnController;
+use Controllers\UnitController;
 
 function registerRoutes(Router $router): void {
     // -------------------------------------------------------------
@@ -495,6 +496,8 @@ function registerRoutes(Router $router): void {
     // -------------------------------------------------------------
     $router->get('/api/v1/accounting-vouchers/open-invoices', [AccountingVoucherController::class, 'openInvoices']);
     $router->get('/api/v1/accounting-vouchers/next-no',       [AccountingVoucherController::class, 'nextVoucherNo']);
+    $router->get('/api/v1/accounting-vouchers/adjacent',      [AccountingVoucherController::class, 'adjacent']);
+    $router->get('/api/v1/accounting-vouchers/branches',      [AccountingVoucherController::class, 'branches']);
     $router->get('/api/v1/accounting-vouchers/{id}',     [AccountingVoucherController::class, 'getById']);
     $router->get('/api/v1/accounting-vouchers',          [AccountingVoucherController::class, 'list']);
     $router->post('/api/v1/accounting-vouchers',         [AccountingVoucherController::class, 'create']);
@@ -503,6 +506,8 @@ function registerRoutes(Router $router): void {
 
     $router->get('/api/accounting-vouchers/open-invoices', [AccountingVoucherController::class, 'openInvoices']);
     $router->get('/api/accounting-vouchers/next-no',       [AccountingVoucherController::class, 'nextVoucherNo']);
+    $router->get('/api/accounting-vouchers/adjacent',      [AccountingVoucherController::class, 'adjacent']);
+    $router->get('/api/accounting-vouchers/branches',      [AccountingVoucherController::class, 'branches']);
     $router->get('/api/accounting-vouchers/{id}',     [AccountingVoucherController::class, 'getById']);
     $router->get('/api/accounting-vouchers',          [AccountingVoucherController::class, 'list']);
     $router->post('/api/accounting-vouchers',         [AccountingVoucherController::class, 'create']);
@@ -531,6 +536,26 @@ function registerRoutes(Router $router): void {
     $router->get('/api/reports/profit-loss',            [AccountingReportController::class, 'profitLoss']);
     $router->get('/api/reports/balance-sheet',          [AccountingReportController::class, 'balanceSheet']);
     $router->get('/api/reports/invoice-status',         [AccountingReportController::class, 'invoiceStatusReport']);
+
+    // -------------------------------------------------------------
+    // Sales Return & Purchase Return Routes
+    // -------------------------------------------------------------
+    // -------------------------------------------------------------
+    // Unit Master Routes
+    // -------------------------------------------------------------
+    $router->get('/api/v1/units/active',      [UnitController::class, 'getActive']);
+    $router->get('/api/v1/units',             [UnitController::class, 'list']);
+    $router->post('/api/v1/units',            [UnitController::class, 'create']);
+    $router->put('/api/v1/units/{id}',        [UnitController::class, 'update']);
+    $router->delete('/api/v1/units/{id}',     [UnitController::class, 'delete']);
+    $router->patch('/api/v1/units/{id}/toggle', [UnitController::class, 'toggleStatus']);
+
+    $router->get('/api/units/active',         [UnitController::class, 'getActive']);
+    $router->get('/api/units',                [UnitController::class, 'list']);
+    $router->post('/api/units',               [UnitController::class, 'create']);
+    $router->put('/api/units/{id}',           [UnitController::class, 'update']);
+    $router->delete('/api/units/{id}',        [UnitController::class, 'delete']);
+    $router->patch('/api/units/{id}/toggle',  [UnitController::class, 'toggleStatus']);
 
     // -------------------------------------------------------------
     // Sales Return & Purchase Return Routes

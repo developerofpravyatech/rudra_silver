@@ -8,7 +8,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
-import { createMetalStock, fetchMetalStockFilterOptions } from '../../services/api';
+import { createMetalStock, fetchMetalStockFilterOptions, fetchUnitsActive } from '../../services/api';
 import { MetalStockFilterOptions } from '../../types';
 import { showSuccessAlert, showErrorAlert, showValidationAlert } from '../../utils/alert';
 
@@ -50,10 +50,16 @@ export const MetalStockAddPage: React.FC<MetalStockAddPageProps> = ({ onBackToLi
   const [apiError, setApiError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Dynamic units from master table
+  const [availableUnits, setAvailableUnits] = useState<string[]>(['Gm', 'Pcs', 'Kg', 'CT']);
+
   useEffect(() => {
     fetchMetalStockFilterOptions()
       .then(setFilterOptions)
       .catch((err) => console.error('Failed to load filter options:', err));
+    fetchUnitsActive()
+      .then((us) => { if (us.length > 0) setAvailableUnits(us.map((u) => u.name)); })
+      .catch(() => {}); // keep default fallback
   }, []);
 
   const handleChange = (field: string, value: any) => {
@@ -309,13 +315,15 @@ export const MetalStockAddPage: React.FC<MetalStockAddPageProps> = ({ onBackToLi
                 {/* Unit */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Unit</label>
-                  <input
-                    type="text"
+                  <select
                     value={formData.unit}
                     onChange={(e) => handleChange('unit', e.target.value)}
-                    placeholder="e.g. Gm"
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-500"
-                  />
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-500 bg-white"
+                  >
+                    {availableUnits.map((u) => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Stock Type */}

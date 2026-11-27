@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { printReport, downloadReportPdf, shareReportOnWhatsApp, ReportPdfOptions } from '../../utils/reportPdf';
 import { MetalStockRecord, PaginatedMetalStock, MetalStockTotals, MetalStockFilterParams, MetalStockFilterOptions } from '../../types';
-import { fetchMetalStockList, deleteMetalStock, fetchMetalStockFilterOptions, fetchMetalStockAll } from '../../services/api';
+import { fetchMetalStockList, deleteMetalStock, fetchMetalStockFilterOptions, fetchMetalStockAll, fetchUnitsActive } from '../../services/api';
 import { MetalStockViewModal } from './MetalStockViewModal';
 
 interface MetalStockListPageProps {
@@ -99,6 +99,14 @@ export const MetalStockListPage: React.FC<MetalStockListPageProps> = ({
     fetchMetalStockFilterOptions()
       .then(setFilterOptions)
       .catch((err) => console.error('Failed to load filter options:', err));
+    // Also load dynamic units from master table and merge into filter options
+    fetchUnitsActive()
+      .then((us) => {
+        if (us.length > 0) {
+          setFilterOptions((prev) => ({ ...prev, units: us.map((u) => u.name) }));
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch metal stock records with server-side pagination & grand totals

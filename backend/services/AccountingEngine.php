@@ -31,8 +31,8 @@ class AccountingEngine {
             VALUES (:lid, :vid, :rtype, :dr, :cr, 0, 'DR', :pdate, :narr, 0, NOW())
         ");
         $entStmt = $db->prepare("
-            INSERT INTO voucher_entries (voucher_id, ledger_id, debit_amount, credit_amount, narration, created_at)
-            VALUES (:vid, :lid, :dr, :cr, :narr, NOW())
+            INSERT INTO voucher_entries (voucher_id, ledger_id, sub_account, debit_amount, credit_amount, narration, created_at)
+            VALUES (:vid, :lid, :sub, :dr, :cr, :narr, NOW())
         ");
 
         foreach ($entries as $entry) {
@@ -48,6 +48,7 @@ class AccountingEngine {
             $entStmt->execute([
                 'vid'  => $voucherId,
                 'lid'  => (int)$entry['ledger_id'],
+                'sub'  => !empty($entry['sub_account']) ? trim((string)$entry['sub_account']) : null,
                 'dr'   => (float)($entry['debit'] ?? 0),
                 'cr'   => (float)($entry['credit'] ?? 0),
                 'narr' => $entry['narration'] ?? $narration,

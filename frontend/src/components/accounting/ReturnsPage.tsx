@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { RotateCcw, Plus, Trash2, Search, RefreshCw, AlertCircle, X, Save, Loader2, Printer, FileDown } from 'lucide-react';
 import { printReport, downloadReportPdf, ReportPdfOptions } from '../../utils/reportPdf';
 import { reqDate, reqText, reqPositiveNum, nonNegNum, FieldErrors } from '../../utils/validation';
@@ -13,7 +14,16 @@ interface Props {
 }
 
 export const ReturnsPage: React.FC<Props> = () => {
-  const [tab, setTab] = useState<'sale' | 'purchase'>('sale');
+  const location = useLocation();
+  const initialTab = new URLSearchParams(location.search).get('tab') === 'purchase' ? 'purchase' : 'sale';
+  const [tab, setTab] = useState<'sale' | 'purchase'>(initialTab);
+
+  useEffect(() => {
+    const t = new URLSearchParams(location.search).get('tab');
+    if (t === 'purchase' || t === 'sale') {
+      setTab(t);
+    }
+  }, [location.search]);
   const [rows, setRows] = useState<ReturnRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
