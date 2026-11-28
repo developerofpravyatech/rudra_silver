@@ -15,20 +15,31 @@ class StockStatusController {
         try {
             $search = $_GET['search'] ?? null;
             $unit = $_GET['unit'] ?? null;
+            $typeWiseGroup = $_GET['type_wise_group'] ?? null;
+            $statusFilter = $_GET['status_filter'] ?? null;
+            $itemType = $_GET['item_type'] ?? null;
+            $itemNameFilter = $_GET['item_name_filter'] ?? null;
+            $itemDropdown = $_GET['item_dropdown'] ?? null;
+            $dateFrom = $_GET['date_from'] ?? null;
+            $dateTo = $_GET['date_to'] ?? null;
+            $approvalFlag = $_GET['approval_flag'] ?? null;
+            $entryWiseFlag = $_GET['entry_wise_flag'] ?? null;
+            $kachiList = $_GET['kachi_list'] ?? null;
+            $itemWiseFilter = $_GET['item_wise_filter'] ?? null;
+            $allRecords = $_GET['all_records'] ?? null;
             $sortBy = $_GET['sort_by'] ?? 'id';
             $sortOrder = $_GET['sort_order'] ?? 'asc';
             $page = max(1, (int)($_GET['page'] ?? 1));
-            $limit = min(100, max(1, (int)($_GET['limit'] ?? 10)));
+            $limit = isset($_GET['all_records']) && $_GET['all_records'] === '1'
+                ? 5000
+                : min(100, max(1, (int)($_GET['limit'] ?? 10)));
 
             $result = StockStatus::paginate(
-                $search,
-                $unit,
-                $sortBy,
-                $sortOrder,
-                $page,
-                $limit
+                $search, $unit, $typeWiseGroup, $statusFilter, $itemType, $itemNameFilter,
+                $itemDropdown, $dateFrom, $dateTo, $approvalFlag, $entryWiseFlag,
+                $kachiList, $itemWiseFilter, $allRecords, $sortBy, $sortOrder, $page, $limit
             );
-
+            $result['filter_capabilities'] = StockStatus::getFilterCapabilities();
             Response::json($result);
         } catch (Exception $e) {
             Response::error($e->getMessage(), 500);
@@ -228,10 +239,22 @@ class StockStatusController {
      */
     public static function exportAll(): void {
         try {
-            $search = $_GET['search'] ?? null;
-            $unit = $_GET['unit'] ?? null;
-
-            $items = StockStatus::getAllMatching($search, $unit);
+            $items = StockStatus::getAllMatching(
+                $_GET['search'] ?? null,
+                $_GET['unit'] ?? null,
+                $_GET['type_wise_group'] ?? null,
+                $_GET['status_filter'] ?? null,
+                $_GET['item_type'] ?? null,
+                $_GET['item_name_filter'] ?? null,
+                $_GET['item_dropdown'] ?? null,
+                $_GET['date_from'] ?? null,
+                $_GET['date_to'] ?? null,
+                $_GET['approval_flag'] ?? null,
+                $_GET['entry_wise_flag'] ?? null,
+                $_GET['kachi_list'] ?? null,
+                $_GET['item_wise_filter'] ?? null,
+                $_GET['all_records'] ?? null
+            );
             Response::json($items);
         } catch (Exception $e) {
             Response::error($e->getMessage(), 500);

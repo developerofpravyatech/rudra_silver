@@ -1,0 +1,24 @@
+RUDRA SILVER ERP - STOCK LIST UPDATE
+
+Scope: Only Stock List, Stock Insert, Stock Edit/Update and the API/model support required for these screens.
+
+Implemented:
+- Unit options now load from the existing active Units Master table.
+- Existing unit names saved in stock_status are also retained for legacy records.
+- Stock Insert uses a required Unit dropdown and saves the selected Unit name.
+- Stock Edit shows the existing unit and allows updating it.
+- Stock List Unit filter uses dynamic Unit names.
+- Added group/type, status, item, date, Kachi List, Item Wise, and All Records filters.
+- Export/print/WhatsApp PDF requests use the active Stock List filters.
+- Approval and Entry Wise controls are disabled when the stock_status table has no matching field; they are enabled only when the corresponding column exists.
+
+Important:
+- stock_status currently stores the unit as a text value. This update continues using that existing field and does not add a database migration.
+- Type/group filters use existing columns if available; otherwise they use item-name matching. Please verify these against your actual data.
+- The screenshot's ALL P / ALL 1 / ALL C dropdowns were not added because the supplied stock_status model does not identify what fields those controls represent. I did not invent mappings that could filter stock incorrectly.
+- Other modules and their functionality were not intentionally changed.
+
+Validation performed:
+- PHP syntax check passed for the changed backend files.
+- TypeScript/TSX syntax transpilation passed for changed frontend files.
+- Full frontend type-check/build could not be completed in this environment because dependencies (vite/client) are not installed in the uploaded project copy.

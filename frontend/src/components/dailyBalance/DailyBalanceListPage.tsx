@@ -523,11 +523,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
       {toastMessage && (
         <div className="fixed top-5 right-5 z-50 animate-in slide-in-from-top-3 duration-200">
           <div
-            className={`px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold ${
-              toastMessage.type === 'success'
+            className={`px-4 py-3 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold ${toastMessage.type === 'success'
                 ? 'bg-emerald-50 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700'
                 : 'bg-red-50 dark:bg-red-950/80 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700'
-            }`}
+              }`}
           >
             {toastMessage.type === 'success' ? (
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -597,14 +596,7 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <span>WhatsApp</span>
             </button>
 
-            <button
-              type="button"
-              onClick={onNavigateAdd}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-xs hover:brightness-105 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Daily Balance</span>
-            </button>
+
           </div>
         </div>
 
@@ -750,11 +742,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAdvFilter((v) => !v)}
-                className={`w-full py-1.5 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
-                  showAdvFilter
+                className={`w-full py-1.5 px-3 rounded-xl border font-semibold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${showAdvFilter
                     ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                     : 'border-slate-300 dark:border-white/[0.1] text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
-                }`}
+                  }`}
               >
                 <SlidersHorizontal className="w-3.5 h-3.5" />
                 <span>Adv. Filter</span>
@@ -1065,11 +1056,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <button
                 type="button"
                 onClick={() => setGroupWiseView((v) => !v)}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  groupWiseView
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${groupWiseView
                     ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-xs'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
-                }`}
+                  }`}
                 title="Toggle Group Wise View"
               >
                 <Layers className="w-3.5 h-3.5" />
@@ -1083,11 +1073,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
                   setOutstandingOnly((v) => !v);
                   setCurrentPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  outstandingOnly
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${outstandingOnly
                     ? 'border-emerald-500 bg-emerald-500 text-white shadow-xs'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-emerald-400'
-                }`}
+                  }`}
                 title="Filter positive outstanding balances"
               >
                 <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
@@ -1109,11 +1098,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowPayDateModal(true)}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  payFromDate || payToDate
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${payFromDate || payToDate
                     ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
-                }`}
+                  }`}
                 title="Payment / Settlement date filter"
               >
                 <Calendar className="w-3.5 h-3.5" />
@@ -1127,11 +1115,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
                   setAgentHpOnly((v) => !v);
                   setCurrentPage(1);
                 }}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  agentHpOnly
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${agentHpOnly
                     ? 'border-purple-500 bg-purple-500 text-white shadow-xs'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-purple-400'
-                }`}
+                  }`}
                 title="Filter Agent / High Priority accounts"
               >
                 <Bookmark className="w-3.5 h-3.5 text-purple-500" />
@@ -1153,11 +1140,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowBalDateModal(true)}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  balanceDate
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${balanceDate
                     ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
-                }`}
+                  }`}
                 title="Pick single balance date"
               >
                 <Calendar className="w-3.5 h-3.5 text-amber-500" />
@@ -1168,11 +1154,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAmountFilterModal(true)}
-                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${
-                  minAmount || maxAmount
+                className={`px-3 py-1.5 rounded-xl border font-semibold text-xs flex items-center gap-1.5 transition cursor-pointer ${minAmount || maxAmount
                     ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
                     : 'border-slate-300 dark:border-white/[0.1] bg-white dark:bg-[#141824] text-slate-700 dark:text-slate-300 hover:border-amber-400'
-                }`}
+                  }`}
                 title="Min / Max amount range filter"
               >
                 <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
@@ -1423,11 +1408,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
                       setConverterPurity('92.5');
                       setConverterRate('95');
                     }}
-                    className={`py-1.5 rounded-xl font-bold border transition ${
-                      converterMetal === 'SILVER'
+                    className={`py-1.5 rounded-xl font-bold border transition ${converterMetal === 'SILVER'
                         ? 'border-amber-500 bg-amber-500/10 text-amber-500'
                         : 'border-slate-200 dark:border-white/[0.1]'
-                    }`}
+                      }`}
                   >
                     Silver
                   </button>
@@ -1438,11 +1422,10 @@ export const DailyBalanceListPage: React.FC<DailyBalanceListPageProps> = ({
                       setConverterPurity('91.6');
                       setConverterRate('7800');
                     }}
-                    className={`py-1.5 rounded-xl font-bold border transition ${
-                      converterMetal === 'GOLD'
+                    className={`py-1.5 rounded-xl font-bold border transition ${converterMetal === 'GOLD'
                         ? 'border-amber-500 bg-amber-500/10 text-amber-500'
                         : 'border-slate-200 dark:border-white/[0.1]'
-                    }`}
+                      }`}
                   >
                     Gold
                   </button>

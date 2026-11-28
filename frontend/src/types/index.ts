@@ -426,6 +426,10 @@ export interface PaginatedStockStatus {
   limit: number;
   total_pages: number;
   totals: StockStatusTotals;
+  filter_capabilities?: {
+    with_approval: boolean;
+    entry_wise: boolean;
+  };
 }
 
 export interface StockStatusFilterParams {
@@ -435,6 +439,19 @@ export interface StockStatusFilterParams {
   sort_order?: 'asc' | 'desc';
   page?: number;
   limit?: number;
+  // Additional filters
+  type_wise_group?: string;     // Type wise group filter
+  status_filter?: string;       // Stock status radio filter
+  item_type?: string;           // Item type filter (Finished/Raw/Unfinish/Dust/Quality)
+  item_name_filter?: string;    // Item name specific filter
+  date_from?: string;           // From date filter
+  date_to?: string;             // To date filter
+  approval_flag?: string;       // With approval checkbox
+  entry_wise_flag?: string;     // Entry wise checkbox
+  kachi_list?: string;          // F8 Kachi List filter
+  item_wise_filter?: string;    // F5 Item Wise filter
+  item_dropdown?: string;       // Item dropdown selection
+  all_records?: boolean;        // All Records button
 }
 
 export interface MetalStockRecord {

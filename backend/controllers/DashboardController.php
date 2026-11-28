@@ -268,4 +268,229 @@ class DashboardController {
             Response::json(['error' => $e->getMessage()], 500);
         }
     }
+
+    /**
+     * Dashboard Overview: counts, daily balance (receipt/payment/closing),
+     * account-wise summary (cash/bank/others), recent vouchers, and monthly trend.
+     */
+    public static function getOverview(): void {
+        $db = \Config\Database::getConnection();
+        try {
+            $from = !empty($_GET['from']) ? $_GET['from'] : date('Y-m-01');
+            $to   = !empty($_GET['to']) ? $_GET['to'] : date('Y-m-t');
+
+            // 1. Total Count Cards (actual DB counts)
+            $customers = (int)$db->query("SELECT COUNT(*) FROM accounts WHERE account_type = 'CUSTOMER'")->fetchColumn();
+            $suppliers = (int)$db->query("SELECT COUNT(*) FROM accounts WHERE account_type = 'SUPPLIER'")->fetchColumn();
+            $karigars  = (int)$db->query("SELECT COUNT(*) FROM karigars")->fetchColumn();
+            if ($karigars === 0) {
+                $karigars = (int)$db->query("SELECT COUNT(*) FROM accounts WHERE account_type = 'KARIGAR'")->fetchColumn();
+            }
+            $items = (int)$db->query("SELECT COUNT(*) FROM items")->fetchColumn();
+
+            // 2. Daily Balance Overview (Receipt, Payment, Closing Balance) for date range
+            $openingCashBankStmt = $db->prepare("
+                SELECT COALESCE(SUM(
+                    CASE WHEN l.opening_balance_type = 'CR' THEN -l.opening_balance ELSE l.opening_balance END
+                ), 0) AS ob
+                FROM ledgers l
+                WHERE l.status = 'ACTIVE' AND l.group_id IN (4, 5)
+            ");
+            $openingCashBankStmt->execute();
+            $baseCashBank = (float)$openingCashBankStmt->fetchColumn();
+
+            $priorStmt = $db->prepare("
+                SELECT
+                    COALESCE(SUM(CASE WHEN voucher_type = 'RECEIPT' THEN net_amount ELSE 0 END), 0) AS rec,
+                    COALESCE(SUM(CASE WHEN voucher_type = 'PAYMENT' THEN net_amount ELSE 0 END), 0) AS pay
+                FROM vouchers
+                WHERE deleted_at IS NULL AND voucher_date < :from AND voucher_type IN ('RECEIPT', 'PAYMENT')
+            ");
+            $priorStmt->execute(['from' => $from]);
+            $priorRow = $priorStmt->fetch(PDO::FETCH_ASSOC);
+            $runningClosing = $baseCashBank + (float)($priorRow['rec'] ?? 0) - (float)($priorRow['pay'] ?? 0);
+
+            $dailyStmt = $db->prepare("
+                SELECT voucher_date,
+                       COALESCE(SUM(CASE WHEN voucher_type = 'RECEIPT' THEN net_amount ELSE 0 END), 0) AS receipt,
+                       COALESCE(SUM(CASE WHEN voucher_type = 'PAYMENT' THEN net_amount ELSE 0 END), 0) AS payment
+                FROM vouchers
+                WHERE deleted_at IS NULL
+                  AND voucher_date BETWEEN :from AND :to
+                  AND voucher_type IN ('RECEIPT', 'PAYMENT')
+                GROUP BY voucher_date
+                ORDER BY voucher_date ASC
+            ");
+            $dailyStmt->execute(['from' => $from, 'to' => $to]);
+            $dailyRows = $dailyStmt->fetchAll(PDO::FETCH_ASSOC);
+            $dailyMap = [];
+            foreach ($dailyRows as $r) {
+                $dailyMap[$r['voucher_date']] = [
+                    'receipt' => (float)$r['receipt'],
+                    'payment' => (float)$r['payment'],
+                ];
+            }
+
+            $dailySeries = [];
+            $startTs = strtotime($from);
+            $endTs   = strtotime($to);
+            if ($startTs !== false && $endTs !== false && $startTs <= $endTs) {
+                $daysCount = (int)round(($endTs - $startTs) / 86400) + 1;
+                if ($daysCount <= 45) {
+                    for ($ts = $startTs; $ts <= $endTs; $ts += 86400) {
+                        $dStr = date('Y-m-d', $ts);
+                        $rec  = $dailyMap[$dStr]['receipt'] ?? 0.0;
+                        $pay  = $dailyMap[$dStr]['payment'] ?? 0.0;
+                        $runningClosing += ($rec - $pay);
+                        $dailySeries[] = [
+                            'date'            => $dStr,
+                            'label'           => date('d M', $ts),
+                            'receipt'         => round($rec, 2),
+                            'payment'         => round($pay, 2),
+                            'closing_balance' => round($runningClosing, 2),
+                        ];
+                    }
+                } else {
+                    foreach ($dailyMap as $dStr => $vals) {
+                        $rec = $vals['receipt'];
+                        $pay = $vals['payment'];
+                        $runningClosing += ($rec - $pay);
+                        $dailySeries[] = [
+                            'date'            => $dStr,
+                            'label'           => date('d M', strtotime($dStr)),
+                            'receipt'         => round($rec, 2),
+                            'payment'         => round($pay, 2),
+                            'closing_balance' => round($runningClosing, 2),
+                        ];
+                    }
+                }
+            }
+
+            // 3. Account Wise Summary (Cash Balance, Bank Balance, Other Account Balance)
+            $accRows = $db->query("
+                SELECT l.group_id,
+                       COALESCE(
+                           CASE WHEN l.opening_balance_type = 'CR' THEN -l.opening_balance ELSE l.opening_balance END,
+                           0
+                       ) + COALESCE(SUM(lp.debit - lp.credit), 0) AS bal
+                FROM ledgers l
+                LEFT JOIN ledger_postings lp ON lp.ledger_id = l.id
+                WHERE l.status = 'ACTIVE'
+                GROUP BY l.id, l.group_id, l.opening_balance, l.opening_balance_type
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $cashBal   = 0.0;
+            $bankBal   = 0.0;
+            $othersBal = 0.0;
+            foreach ($accRows as $ar) {
+                $gid = (int)$ar['group_id'];
+                $val = abs((float)$ar['bal']);
+                if ($gid === 4) {
+                    $cashBal += $val;
+                } elseif ($gid === 5) {
+                    $bankBal += $val;
+                } else {
+                    $othersBal += $val;
+                }
+            }
+            $accTotal = $cashBal + $bankBal + $othersBal;
+
+            // 4. Recent Vouchers (Receipt, Payment, Contra, Journal)
+            $recentStmt = $db->query("
+                SELECT v.id, v.voucher_date, v.voucher_type, v.voucher_no, v.series,
+                       v.net_amount,
+                       COALESCE(a.name, sa.name, v.narration, '—') AS party_name
+                FROM vouchers v
+                LEFT JOIN accounts a ON a.id = v.account_id
+                LEFT JOIN accounts sa ON sa.id = v.second_account_id
+                WHERE v.voucher_type IN ('RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL')
+                  AND v.deleted_at IS NULL
+                ORDER BY v.voucher_date DESC, v.id DESC
+                LIMIT 6
+            ");
+            $recentVouchers = $recentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // 5. Gold & Silver Rate Trend (actual historical records from daily_board_rates)
+            $ratePeriod = $_GET['rate_period'] ?? '30d';
+            $periodDaysMap = [
+                '7d'  => 7,
+                '15d' => 15,
+                '30d' => 30,
+                '3m'  => 90,
+                '6m'  => 180,
+                '1y'  => 365,
+            ];
+            $rateDays = $periodDaysMap[$ratePeriod] ?? 30;
+            $rateStart = date('Y-m-d', strtotime("-{$rateDays} days"));
+
+            $rateStmt = $db->prepare("
+                SELECT dbr.rate_date,
+                       dbr.gold_24k_sell_rate AS gold_rate,
+                       dbr.silver_pure_sell_rate AS silver_rate
+                FROM daily_board_rates dbr
+                INNER JOIN (
+                    SELECT rate_date, MAX(id) AS max_id
+                    FROM daily_board_rates
+                    WHERE rate_date >= :rstart
+                    GROUP BY rate_date
+                ) latest_per_day ON latest_per_day.max_id = dbr.id
+                ORDER BY dbr.rate_date ASC
+            ");
+            $rateStmt->execute(['rstart' => $rateStart]);
+            $rateRows = $rateStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $ratePoints = [];
+            foreach ($rateRows as $rr) {
+                $ratePoints[] = [
+                    'date'        => $rr['rate_date'],
+                    'label'       => date($rateDays > 90 ? "M 'y" : 'd M', strtotime($rr['rate_date'])),
+                    'gold_rate'   => round((float)$rr['gold_rate'], 2),
+                    'silver_rate' => round((float)$rr['silver_rate'], 2),
+                ];
+            }
+
+            $latestRateRow = $db->query("
+                SELECT rate_date, gold_24k_sell_rate AS gold_rate, silver_pure_sell_rate AS silver_rate
+                FROM daily_board_rates
+                ORDER BY rate_date DESC, id DESC
+                LIMIT 1
+            ")->fetch(PDO::FETCH_ASSOC);
+
+            $latestRate = $latestRateRow ? [
+                'date'        => $latestRateRow['rate_date'],
+                'gold_rate'   => round((float)$latestRateRow['gold_rate'], 2),
+                'silver_rate' => round((float)$latestRateRow['silver_rate'], 2),
+                'gold_unit'   => 'per 10g',
+                'silver_unit' => 'per kg',
+            ] : null;
+
+            Response::json([
+                'range' => ['from' => $from, 'to' => $to],
+                'counts' => [
+                    'customers' => $customers,
+                    'suppliers' => $suppliers,
+                    'karigars'  => $karigars,
+                    'items'     => $items,
+                ],
+                'daily_balance' => $dailySeries,
+                'account_summary' => [
+                    'cash'       => round($cashBal, 2),
+                    'bank'       => round($bankBal, 2),
+                    'others'     => round($othersBal, 2),
+                    'total'      => round($accTotal, 2),
+                    'cash_pct'   => $accTotal > 0 ? round(($cashBal / $accTotal) * 100, 1) : 0,
+                    'bank_pct'   => $accTotal > 0 ? round(($bankBal / $accTotal) * 100, 1) : 0,
+                    'others_pct' => $accTotal > 0 ? round(($othersBal / $accTotal) * 100, 1) : 0,
+                ],
+                'recent_vouchers' => $recentVouchers,
+                'rate_trend' => [
+                    'period' => $ratePeriod,
+                    'points' => $ratePoints,
+                    'latest' => $latestRate,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Response::json(['error' => $e->getMessage()], 500);
+        }
+    }
 }

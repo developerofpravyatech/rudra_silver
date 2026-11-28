@@ -56,11 +56,26 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   });
 
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
+  const [availableItems, setAvailableItems] = useState<string[]>([]);
+  const [filterCapabilities, setFilterCapabilities] = useState<{ with_approval: boolean; entry_wise: boolean }>({
+    with_approval: false,
+    entry_wise: false,
+  });
 
   // Search, Filter, Sort, Pagination states
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [appliedSearch, setAppliedSearch] = useState<string>('');
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
+  const [typeWiseGroup, setTypeWiseGroup] = useState<string>('ALL GROUP');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [itemType, setItemType] = useState<string>('All');
+  const [selectedItem, setSelectedItem] = useState<string>('ALL ITEM');
+  const [dateFilter, setDateFilter] = useState<string>('');
+  const [withApproval, setWithApproval] = useState<boolean>(false);
+  const [entryWise, setEntryWise] = useState<boolean>(false);
+  const [kachiListActive, setKachiListActive] = useState<boolean>(false);
+  const [itemWiseActive, setItemWiseActive] = useState<boolean>(false);
+  const [showAllRecords, setShowAllRecords] = useState<boolean>(false);
   const [sortBy, setSortBy] = useState<string>('id');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -82,24 +97,50 @@ export const StockListPage: React.FC<StockListPageProps> = ({
       .catch((err) => console.error('Failed to load units:', err));
   }, []);
 
+  // Load item names for the Item Wise dropdown from existing stock records.
+  useEffect(() => {
+    fetchStockStatusAll({})
+      .then((records) => {
+        const names = Array.from(new Set((records || []).map((record) => record.item_name).filter(Boolean)));
+        setAvailableItems(names.sort((a, b) => a.localeCompare(b)));
+      })
+      .catch((err) => console.error('Failed to load stock item filter options:', err));
+  }, []);
+
+  const getAppliedFilterParams = (): StockStatusFilterParams => ({
+    search: appliedSearch || undefined,
+    unit: selectedUnit !== 'all' ? selectedUnit : undefined,
+    type_wise_group: typeWiseGroup !== 'ALL GROUP' ? typeWiseGroup : undefined,
+    status_filter: statusFilter !== 'All' ? statusFilter : undefined,
+    item_type: itemType !== 'All' ? itemType : undefined,
+    item_dropdown: selectedItem !== 'ALL ITEM' ? selectedItem : undefined,
+    date_from: dateFilter || undefined,
+    date_to: dateFilter || undefined,
+    approval_flag: withApproval ? 'With Approval' : undefined,
+    entry_wise_flag: entryWise ? 'With Entry Wise' : undefined,
+    kachi_list: kachiListActive ? 'Kachi' : undefined,
+    item_wise_filter: itemWiseActive ? (selectedItem !== 'ALL ITEM' ? selectedItem : appliedSearch || undefined) : undefined,
+    all_records: showAllRecords,
+  });
+
   // Fetch stock_status data with server-side pagination, search, filters & grand totals
   const loadStockData = useCallback(async () => {
     setLoading(true);
     setApiError(null);
     try {
       const params: StockStatusFilterParams = {
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
+        ...getAppliedFilterParams(),
         sort_by: sortBy,
         sort_order: sortOrder,
-        page: currentPage,
-        limit: pageSize,
+        page: showAllRecords ? 1 : currentPage,
+        limit: showAllRecords ? 5000 : pageSize,
       };
 
       const res: PaginatedStockStatus = await fetchStockStatusList(params);
       setItems(res.items || []);
       setTotalRecords(res.total || 0);
       setTotalPages(res.total_pages || 1);
+      setFilterCapabilities(res.filter_capabilities || { with_approval: false, entry_wise: false });
       if (res.totals) {
         setTotals(res.totals);
       }
@@ -108,7 +149,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [appliedSearch, selectedUnit, sortBy, sortOrder, currentPage, pageSize]);
+  }, [appliedSearch, selectedUnit, typeWiseGroup, statusFilter, itemType, selectedItem, dateFilter, withApproval, entryWise, kachiListActive, itemWiseActive, showAllRecords, sortBy, sortOrder, currentPage, pageSize]);
 
   useEffect(() => {
     loadStockData();
@@ -137,6 +178,16 @@ export const StockListPage: React.FC<StockListPageProps> = ({
     setSearchQuery('');
     setAppliedSearch('');
     setSelectedUnit('all');
+    setTypeWiseGroup('ALL GROUP');
+    setStatusFilter('All');
+    setItemType('All');
+    setSelectedItem('ALL ITEM');
+    setDateFilter('');
+    setWithApproval(false);
+    setEntryWise(false);
+    setKachiListActive(false);
+    setItemWiseActive(false);
+    setShowAllRecords(false);
     setSortBy('id');
     setSortOrder('asc');
     setCurrentPage(1);
@@ -205,10 +256,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   const handleExportCSV = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchStockStatusAll({
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
-      });
+      const allRecords = await fetchStockStatusAll(getAppliedFilterParams());
 
       if (!allRecords || allRecords.length === 0) {
         showToast('No stock data available to export.', 'error');
@@ -269,10 +317,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   const handleExportExcel = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchStockStatusAll({
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
-      });
+      const allRecords = await fetchStockStatusAll(getAppliedFilterParams());
 
       if (!allRecords || allRecords.length === 0) {
         showToast('No stock data available to export.', 'error');
@@ -345,6 +390,11 @@ export const StockListPage: React.FC<StockListPageProps> = ({
       filename: `Stock_List_${today}.pdf`,
       filters: [
         { label: 'Unit', value: selectedUnit === 'all' ? 'All Units' : selectedUnit },
+        { label: 'Group', value: typeWiseGroup },
+        { label: 'Status', value: statusFilter },
+        { label: 'Item Type', value: itemType },
+        { label: 'Item', value: selectedItem },
+        { label: 'Date', value: dateFilter || 'All Dates' },
         { label: 'Search', value: appliedSearch || 'All' },
         { label: 'Total Records', value: String(records.length) },
       ],
@@ -398,10 +448,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   const handlePrint = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchStockStatusAll({
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
-      });
+      const allRecords = await fetchStockStatusAll(getAppliedFilterParams());
 
       if (!allRecords || allRecords.length === 0) {
         showToast('No stock data available to print.', 'error');
@@ -420,10 +467,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   const handleDownloadPDF = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchStockStatusAll({
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
-      });
+      const allRecords = await fetchStockStatusAll(getAppliedFilterParams());
 
       if (!allRecords || allRecords.length === 0) {
         showToast('No stock data available to export as PDF.', 'error');
@@ -442,10 +486,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
   const handleShareWhatsApp = async () => {
     try {
       setExporting(true);
-      const allRecords = await fetchStockStatusAll({
-        search: appliedSearch || undefined,
-        unit: selectedUnit !== 'all' ? selectedUnit : undefined,
-      });
+      const allRecords = await fetchStockStatusAll(getAppliedFilterParams());
 
       if (!allRecords || allRecords.length === 0) {
         showToast('No stock data available to share on WhatsApp.', 'error');
@@ -472,7 +513,7 @@ export const StockListPage: React.FC<StockListPageProps> = ({
     );
   };
 
-  const hasActiveFilters = Boolean(appliedSearch || selectedUnit !== 'all');
+  const hasActiveFilters = Boolean(appliedSearch || selectedUnit !== 'all' || typeWiseGroup !== 'ALL GROUP' || statusFilter !== 'All' || itemType !== 'All' || selectedItem !== 'ALL ITEM' || dateFilter || withApproval || entryWise || kachiListActive || itemWiseActive);
 
   // Pagination calculation
   const startRecord = totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -630,76 +671,88 @@ export const StockListPage: React.FC<StockListPageProps> = ({
           </div>
 
           {/* Search & Filter Section */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1 pb-2 print:hidden">
-            <div className="flex flex-wrap items-center gap-2.5 flex-1">
-              {/* Search Item Name */}
+          <div className="space-y-3 pt-1 pb-2 print:hidden">
+            <div className="flex flex-wrap items-center gap-2.5">
               <div className="relative w-64 max-w-full">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSearchSubmit();
-                    }
-                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSearchSubmit(); } }}
                   placeholder="Search Item Name..."
                   className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500 text-slate-800 placeholder:text-slate-400"
                 />
                 {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
+                  <button type="button" onClick={handleClearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
               </div>
 
-              {/* All Units Dropdown Filter */}
-              <div className="relative">
-                <select
-                  value={selectedUnit}
-                  onChange={(e) => {
-                    setSelectedUnit(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="appearance-none pl-3 pr-8 py-2 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-medium text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                >
-                  <option value="all">All Units</option>
-                  {availableUnits.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              </div>
+              <select value={typeWiseGroup} onChange={(e) => { setTypeWiseGroup(e.target.value); setCurrentPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800">
+                <option value="ALL GROUP">ALL GROUP</option>
+                <option value="Finished">Finished</option>
+                <option value="Raw">Raw</option>
+                <option value="Unfinish">Unfinish</option>
+                <option value="Dust">Dust</option>
+                <option value="Quality">Quality</option>
+              </select>
 
-              {/* Filter Button (Royal Blue) */}
-              <button
-                type="button"
-                onClick={() => handleSearchSubmit()}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Filter className="w-4 h-4" />
-                <span>Filter</span>
-              </button>
+              <select value={selectedUnit} onChange={(e) => { setSelectedUnit(e.target.value); setCurrentPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800">
+                <option value="all">ALL UNITS</option>
+                {availableUnits.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
 
-              {/* Clear Button */}
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="px-3.5 py-2 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-medium shadow-2xs transition flex items-center gap-1.5 bg-white cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4 text-slate-500" />
-                <span>Clear</span>
-              </button>
+              <select value={selectedItem} onChange={(e) => { setSelectedItem(e.target.value); setCurrentPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 max-w-[220px]">
+                <option value="ALL ITEM">ALL ITEM</option>
+                {availableItems.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+
+              <select value={itemType} onChange={(e) => { setItemType(e.target.value); setCurrentPage(1); }} className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800">
+                {['All', 'Finished', 'Raw', 'Unfinish', 'Dust', 'Quality'].map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+
+              <input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }} aria-label="Stock date filter" className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-800" />
+
+              <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                <input type="checkbox" checked={withApproval} disabled={!filterCapabilities.with_approval} title={!filterCapabilities.with_approval ? 'Approval field is not available in the current stock_status table.' : undefined} onChange={(e) => { setWithApproval(e.target.checked); setCurrentPage(1); }} />
+                With Approval
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-slate-700">
+                <input type="checkbox" checked={entryWise} disabled={!filterCapabilities.entry_wise} title={!filterCapabilities.entry_wise ? 'Entry-wise field is not available in the current stock_status table.' : undefined} onChange={(e) => { setEntryWise(e.target.checked); setCurrentPage(1); }} />
+                Entry Wise
+              </label>
             </div>
 
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-2">
+              <span className="text-xs font-semibold text-slate-500">Stock Status:</span>
+              {['In Stock', 'All', 'M.Stock', 'Studed', 'Negative', 'WO Studed', 'Sh/Ex', 'Batch'].map((option) => (
+                <label key={option} className="flex items-center gap-1.5 text-xs text-slate-700">
+                  <input type="radio" name="stock-status-filter" value={option} checked={statusFilter === option} onChange={() => { setStatusFilter(option); setCurrentPage(1); }} />
+                  {option}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-slate-100 pt-2">
+              <span className="text-xs font-semibold text-slate-500">Item Type:</span>
+              {['All', 'Finished', 'Raw', 'Unfinish', 'Dust', 'Quality'].map((option) => (
+                <label key={option} className="flex items-center gap-1.5 text-xs text-slate-700">
+                  <input type="radio" name="stock-item-type-filter" value={option} checked={itemType === option} onChange={() => { setItemType(option); setCurrentPage(1); }} />
+                  {option}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => { setKachiListActive((v) => !v); setCurrentPage(1); }} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${kachiListActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'}`}>F8 Kachi List</button>
+              <button type="button" onClick={() => { setItemWiseActive((v) => !v); setCurrentPage(1); }} className={`px-3 py-1.5 rounded-lg border text-xs font-medium ${itemWiseActive ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'}`}>F5 Item Wise</button>
+              <button type="button" onClick={() => { setShowAllRecords(true); setCurrentPage(1); }} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium">All Records</button>
+              <button type="button" onClick={() => { setShowAllRecords(false); setCurrentPage(1); }} className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium">Paginated</button>
+              <button type="button" onClick={() => handleSearchSubmit()} className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1.5"><Filter className="w-3.5 h-3.5" />Filter</button>
+              <button type="button" onClick={handleResetFilters} className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-medium flex items-center gap-1.5"><RotateCcw className="w-3.5 h-3.5 text-slate-500" />Clear</button>
+            </div>
             {/* Show Records Dropdown (Far Right) */}
             <div className="flex items-center space-x-2 text-xs sm:text-sm text-slate-600 shrink-0">
               <span className="font-medium text-slate-500">Show:</span>

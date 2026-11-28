@@ -75,6 +75,146 @@ class SaleRegisterController {
             }
 
             $created = SaleRegister::create($body);
+            if (!$created) {
+                Response::error('Failed to create sale register entry.', 500);
+                return;
+            }
+
+            // Auto-create invoice voucher for the sale
+            try {
+                $branchId = 1;
+                $series = $body['series'] ?? 'GST';
+                $voucherType = 'SALE';
+
+                $db = \Config\Database::getConnection();
+                $db->beginTransaction();
+
+                // Find next voucher_no using same logic as Voucher model
+                $stmt = $db->prepare('
+                    SELECT voucher_no FROM vouchers 
+                    WHERE branch_id = :branch_id AND series = :series AND voucher_type = :vtype 
+                    ORDER BY voucher_no DESC LIMIT 1
+                ');
+                $stmt->execute(['branch_id' => $branchId, 'series' => $series, 'vtype' => $voucherType]);
+                $lastNo = $stmt->fetchColumn();
+                $nextVno = $lastNo ? ((int)$lastNo + 1) : 1;
+
+                $voucherDate = $body['voucher_date'] ?? date('Y-m-d');
+
+                // Insert into vouchers table
+                $gstAmt = (float)($body['gst_amount'] ?? 0);
+                $taxableAmt = max(0, round(($body['amount'] ?? $body['sale_value'] ?? 0) - $gstAmt, 2));
+
+                $vStmt = $db->prepare('
+                    INSERT INTO vouchers (
+                        voucher_no, series, branch_id, voucher_type, voucher_date,
+                        account_id, second_account_id, gross_amount, discount_amount,
+                        taxable_amount, cgst_amount, sgst_amount, igst_amount,
+                        net_amount, round_off, settled_fine_gold, settled_fine_silver,
+                        settled_cash_inr, narration, common_narration, created_at
+                    ) VALUES (
+                        :voucher_no, :series, :branch_id, :voucher_type, :voucher_date,
+                        :account_id, :second_account_id, :gross_amount, :discount_amount,
+                        :taxable_amount, :cgst_amount, :sgst_amount, :igst_amount,
+                        :net_amount, :round_off, :settled_fine_gold, :settled_fine_silver,
+                        :settled_cash_inr, :narration, :common_narration, NOW()
+                    )
+                ');
+
+                $vStmt->execute([
+                    'voucher_no'          => $nextVno,
+                    'series'              => $series,
+                    'branch_id'           => $branchId,
+                    'voucher_type'        => $voucherType,
+                    'voucher_date'        => $voucherDate,
+                    'account_id'          => $body['account_group'] ?? 1,
+                    'second_account_id'   => null,
+                    'gross_amount'        => $body['amount'] ?? $body['sale_value'] ?? 0,
+                    'discount_amount'     => $body['gst_amount'] ?? 0,
+                    'taxable_amount'      => $taxableAmt,
+                    'cgst_amount'         => $body['gst_amount'] ?? 0,
+                    'sgst_amount'         => 0,
+                    'igst_amount'         => 0,
+                    'net_amount'          => $body['amount'] ?? $body['sale_value'] ?? 0,
+                    'round_off'           => 0,
+                    'settled_fine_gold'   => 0,
+                    'settled_fine_silver' => 0,
+                    'settled_cash_inr'    => 0,
+                    'narration'           => 'Sale Invoice - ' . $nextVno,
+                    'common_narration'    => 'Sale Invoice - ' . $nextVno,
+                ]);
+
+                $voucherId = (int)$db->lastInsertId();
+
+                // Insert invoice items if item details available
+                $items = [];
+                if (!empty($body['item_name'])) {
+                    $items[] = [
+                        'item_description' => $body['item_name'] ?? '',
+                        'pieces'           => $body['pieces'] ?? 1,
+                        'gross_weight'     => $body['gross_weight'] ?? 0,
+                        'net_weight'       => $body['net_weight'] ?? 0,
+                        'purity_touch'     => 92.5,
+                        'wastage_percent'  => 0,
+                        'fine_weight'      => 0,
+                        'metal_rate_per_gram'=> 0,
+                        'metal_amount'     => 0,
+                        'labour_rate'      => 0,
+                        'labour_amount'    => 0,
+                        'stone_amount'     => 0,
+                        'total_item_amount'=> 0,
+                        'huid_number'      => null,
+                    ];
+                }
+
+                if (!empty($items)) {
+                    $iStmt = $db->prepare('
+                        INSERT INTO voucher_items (
+                            voucher_id, tag_id, item_id, purity_stamp_id, item_description,
+                            pieces, gross_weight, less_weight, net_weight, purity_touch,
+                            wastage_percent, fine_weight, metal_rate_per_gram, metal_amount,
+                            labour_rate, labour_amount, stone_amount, total_item_amount, huid_number
+                        ) VALUES (
+                            :voucher_id, :tag_id, :item_id, :purity_stamp_id, :item_description,
+                            :pieces, :gross_weight, :less_weight, :net_weight, :purity_touch,
+                            :wastage_percent, :fine_weight, :metal_rate_per_gram, :metal_amount,
+                            :labour_rate, :labour_amount, :stone_amount, :total_item_amount, :huid_number
+                        ');
+                    foreach ($items as $itm) {
+                        $iStmt->execute([
+                            'voucher_id'          => $voucherId,
+                            'tag_id'              => null,
+                            'item_id'             => 0,
+                            'purity_stamp_id'     => 0,
+                            'item_description'    => $itm['item_description'],
+                            'pieces'              => (int)($itm['pieces'] ?? 1),
+                            'gross_weight'        => (float)($itm['gross_weight'] ?? 0),
+                            'less_weight'         => (float)($itm['less_weight'] ?? 0),
+                            'net_weight'          => (float)($itm['net_weight'] ?? 0),
+                            'purity_touch'        => (float)($itm['purity_touch'] ?? 0),
+                            'wastage_percent'     => (float)($itm['wastage_percent'] ?? 0),
+                            'fine_weight'         => (float)($itm['fine_weight'] ?? 0),
+                            'metal_rate_per_gram' => (float)($itm['metal_rate_per_gram'] ?? 0),
+                            'metal_amount'        => (float)($itm['metal_amount'] ?? 0),
+                            'labour_rate'         => (float)($itm['labour_rate'] ?? 0),
+                            'labour_amount'       => (float)($itm['labour_amount'] ?? 0),
+                            'stone_amount'        => (float)($itm['stone_amount'] ?? 0),
+                            'total_item_amount'   => (float)($itm['total_item_amount'] ?? 0),
+                            'huid_number'         => $itm['huid_number'],
+                        ]);
+                    }
+                }
+
+                // Set payment status to UNPAID for new sale
+                $db->prepare("UPDATE vouchers SET paid_amount = 0, outstanding_amount = :out, payment_status = 'UNPAID', status = 'POSTED' WHERE id = :vid")
+                    ->execute(['out' => ($body['amount'] ?? $body['sale_value'] ?? 0), 'vid' => $voucherId]);
+
+                $db->commit();
+            } catch (Exception $e) {
+                $db->rollBack();
+                error_log('Auto-invoice creation failed: ' . $e->getMessage());
+                // Don't fail the sale registration if invoice creation fails
+            }
             Response::json([
                 'success' => true,
                 'message' => 'Sale register entry added successfully.',

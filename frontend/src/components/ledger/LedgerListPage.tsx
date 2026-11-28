@@ -15,10 +15,10 @@ interface Props {
 }
 
 const NATURE_COLORS: Record<string, string> = {
-  ASSET:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
+  ASSET: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400',
   LIABILITY: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400',
-  INCOME:    'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400',
-  EXPENSE:   'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400',
+  INCOME: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400',
+  EXPENSE: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400',
 };
 
 export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEdit, onView }) => {
@@ -67,7 +67,7 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    fetchLedgerFilterOptions().then(d => setFilterOptions(d)).catch(() => {});
+    fetchLedgerFilterOptions().then(d => setFilterOptions(d)).catch(() => { });
   }, []);
 
   const handleDelete = async (l: Ledger) => {
@@ -137,13 +137,7 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs font-semibold hover:bg-amber-100">
               <FileDown className="w-4 h-4" /> PDF
             </button>
-            <button
-              onClick={onAdd}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shadow-md shadow-amber-500/20 transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              New Ledger
-            </button>
+
             <button
               onClick={() => exportLedgerCsv(ledgers?.[0]?.id)}
               disabled={ledgers.length === 0}
@@ -283,10 +277,9 @@ export const LedgerListPage: React.FC<Props> = ({ onBackToDashboard, onAdd, onEd
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
-                                                : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-500'
-                        }`}>{l.status}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${l.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                            : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-500'
+                          }`}>{l.status}</span>
                       </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">

@@ -10,19 +10,31 @@ class VoucherController {
     public static function listVouchers(): void {
         $limit = max(1, (int)($_GET['limit'] ?? 50));
         $voucherType = strtoupper($_GET['voucher_type'] ?? '');
+        $paymentStatus = strtoupper($_GET['payment_status'] ?? '');
         $db = \Config\Database::getConnection();
         try {
             $conditions = [];
             $params = [];
             
             if (!empty($voucherType)) {
-                $allowedTypes = ['RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'SALE'];
-                if (in_array($voucherType, $allowedTypes)) {
+                // Invoice History uses SALE and PURCHASE voucher types.
+                $allowedTypes = ['RECEIPT', 'PAYMENT', 'CONTRA', 'JOURNAL', 'SALE', 'PURCHASE'];
+                if (in_array($voucherType, $allowedTypes, true)) {
                     $conditions[] = 'v.voucher_type = :vtype';
                     $params[':vtype'] = $voucherType;
                 }
             }
-            
+
+            // Dynamic search by invoice/voucher number, customer name or mobile.
+            if (!empty($_GET['search'])) {
+                $search = trim((string)$_GET['search']);
+                $conditions[] = '(CAST(v.voucher_no AS CHAR) LIKE :search_no OR a.name LIKE :search_account OR a.mobile LIKE :search_mobile)';
+                $like = '%' . $search . '%';
+                $params[':search_no'] = $like;
+                $params[':search_account'] = $like;
+                $params[':search_mobile'] = $like;
+            }
+
             // Date-wise filtering
             if (!empty($_GET['from_date'])) {
                 $conditions[] = 'v.voucher_date >= :from_date';
@@ -31,6 +43,15 @@ class VoucherController {
             if (!empty($_GET['to_date'])) {
                 $conditions[] = 'v.voucher_date <= :to_date';
                 $params[':to_date'] = $_GET['to_date'];
+            }
+            
+            // Payment status filtering
+            if (!empty($paymentStatus)) {
+                $allowedStatuses = ['PAID', 'PARTIAL', 'UNPAID'];
+                if (in_array($paymentStatus, $allowedStatuses)) {
+                    $conditions[] = 'v.payment_status = :pstatus';
+                    $params[':pstatus'] = $paymentStatus;
+                }
             }
             
             // Voucher number search
@@ -53,6 +74,7 @@ class VoucherController {
             $stmt = $db->prepare("
                 SELECT v.id, v.voucher_no, v.voucher_date, v.voucher_type, v.series,
                        v.gross_amount, v.discount_amount, v.net_amount,
+                       v.taxable_amount,
                        COALESCE(v.paid_amount, 0) AS paid_amount,
                        COALESCE(v.outstanding_amount, v.net_amount) AS outstanding_amount,
                        COALESCE(v.payment_status, 'UNPAID') AS payment_status,
@@ -101,6 +123,34 @@ class VoucherController {
         try {
             $result = \Models\Voucher::create($body);
             \Helpers\Response::json($result, 201);
+        } catch (Exception $e) {
+            \Helpers\Response::error($e->getMessage(), 500);
+        }
+    }
+
+    public static function deleteVoucher(int $id): void {
+        $voucher = \Models\Voucher::getById($id);
+        if (!$voucher) {
+            \Helpers\Response::error('Voucher not found', 404);
+            return;
+        }
+
+        try {
+            // First, check for any referenced payment vouchers
+            $db = \Config\Database::getConnection();
+            $checkStmt = $db->prepare("
+                SELECT COUNT(*) as cnt FROM payment_splits WHERE voucher_id = :id
+            ");
+            $checkStmt->execute(['id' => $id]);
+            $check = $checkStmt->fetch();
+            
+            if ($check['cnt'] > 0) {
+                \Helpers\Response::error("Cannot delete voucher #$id: There are $check[cnt] payment(s) allocated against it. Please unallocate payment voucher(s) first.", 400);
+                return;
+            }
+            
+            \Models\Voucher::deleteVoucher($id);
+            \Helpers\Response::json(['success' => true, 'message' => 'Voucher deleted successfully.']);
         } catch (Exception $e) {
             \Helpers\Response::error($e->getMessage(), 500);
         }

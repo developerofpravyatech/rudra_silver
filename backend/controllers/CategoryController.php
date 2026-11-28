@@ -164,7 +164,7 @@ class CategoryController {
             Category::delete($catId);
             Response::json([
                 'success' => true,
-                'message' => "Category '{$existing['name']}' (ID: {$catId}) deleted successfully."
+                'message' => "Category '{$existing['name']}'  deleted successfully."
             ]);
         } catch (Exception $e) {
             Response::error($e->getMessage(), 400);

@@ -595,14 +595,7 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
             >
               <RotateCcw className="w-4 h-4" />
             </button>
-            <button
-              type="button"
-              onClick={handleAddClick}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold text-xs hover:brightness-105 transition shadow-sm flex items-center gap-1.5 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Transaction</span>
-            </button>
+
           </div>
         </div>
 
@@ -970,9 +963,9 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
                           <td className="py-2 px-3 font-mono text-[11px]">{r.transaction_date}</td>
                           <td className="py-2 px-3">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.transaction_type === 'Sale' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                                r.transaction_type === 'Purchase' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
-                                  r.transaction_type === 'Payment' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
-                                    'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
+                              r.transaction_type === 'Purchase' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                                r.transaction_type === 'Payment' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
+                                  'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
                               }`}>
                               {r.transaction_type}
                             </span>
@@ -1020,9 +1013,9 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
                       <td className="py-2.5 px-3 font-mono text-[11px]">{r.transaction_date}</td>
                       <td className="py-2.5 px-3">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.transaction_type === 'Sale' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' :
-                            r.transaction_type === 'Purchase' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
-                              r.transaction_type === 'Payment' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
-                                'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
+                          r.transaction_type === 'Purchase' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' :
+                            r.transaction_type === 'Payment' ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400' :
+                              'bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300'
                           }`}>
                           {r.transaction_type}
                         </span>
@@ -1194,8 +1187,8 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
               type="button"
               onClick={() => setActiveGrouping(activeGrouping === 'VOUCHER' ? 'NONE' : 'VOUCHER')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${activeGrouping === 'VOUCHER'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
-                  : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
                 }`}
             >
               Voucher Wise
@@ -1204,8 +1197,8 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
               type="button"
               onClick={() => setActiveGrouping(activeGrouping === 'TYPE' ? 'NONE' : 'TYPE')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${activeGrouping === 'TYPE'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
-                  : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
                 }`}
             >
               Type Wise
@@ -1214,8 +1207,8 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
               type="button"
               onClick={() => setActiveGrouping(activeGrouping === 'GROUP' ? 'NONE' : 'GROUP')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${activeGrouping === 'GROUP'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
-                  : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
                 }`}
             >
               Group Wise
@@ -1224,8 +1217,8 @@ export const TransactionListPage: React.FC<TransactionsListProps> = ({
               type="button"
               onClick={() => setActiveGrouping(activeGrouping === 'JOB' ? 'NONE' : 'JOB')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer ${activeGrouping === 'JOB'
-                  ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
-                  : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
+                ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold'
+                : 'border-slate-200 dark:border-white/[0.1] hover:bg-slate-50 dark:hover:bg-white/5'
                 }`}
             >
               Job Wise

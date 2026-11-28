@@ -248,10 +248,17 @@ class SaleRegister {
 
     public static function create(array $data): array {
         $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
 
         $voucherNo = trim((string)($data['voucher_no'] ?? ''));
         if ($voucherNo === '') {
-            $voucherNo = 'SAL-' . date('Ymd') . '-' . rand(100, 999);
+            $voucherNo = self::nextVoucherNo();
+        }
+        $dup = $db->prepare("SELECT id FROM sale_register WHERE voucher_no = :no AND deleted_at IS NULL LIMIT 1");
+        $dup->execute(['no' => $voucherNo]);
+        if ($dup->fetchColumn()) {
+            throw new Exception("Duplicate sale invoice number: {$voucherNo}");
         }
 
         $voucherDate = !empty($data['voucher_date']) ? $data['voucher_date'] : date('Y-m-d');
@@ -340,14 +347,29 @@ class SaleRegister {
         $id = (int)$db->lastInsertId();
         $invTotal = max(0, (float)($data['amount'] ?? $data['sale_value'] ?? 0));
         $gstAmt = max(0, (float)($data['gst_amount'] ?? 0));
-        $db->prepare("UPDATE sale_register SET gst_amount = :gst, paid_amount = 0, outstanding_amount = :out, payment_status = 'UNPAID' WHERE id = :id")
-           ->execute(['gst' => $gstAmt, 'out' => $invTotal, 'id' => $id]);
+        $paidAmt = min($invTotal, max(0, (float)($data['paid_amount'] ?? 0)));
+        $outAmt = max(0, round($invTotal - $paidAmt, 2));
+        $payStatus = $outAmt <= 0.01 ? 'PAID' : ($paidAmt > 0 ? 'PARTIAL' : 'UNPAID');
+        $db->prepare("UPDATE sale_register SET gst_amount = :gst, paid_amount = :paid, outstanding_amount = :out, payment_status = :status WHERE id = :id")
+           ->execute(['gst' => $gstAmt, 'paid' => $paidAmt, 'out' => $outAmt, 'status' => $payStatus, 'id' => $id]);
         self::postAccounting($id, $data);
+        self::postInventoryAndDaily($id, $data);
+        self::updateDailyBalance($id, $data);
+        $db->commit();
         return self::findById($id);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
+        }
     }
 
     public static function update(int $id, array $data): array {
         $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
 
         $existing = self::findById($id);
         if (!$existing) {
@@ -471,45 +493,182 @@ class SaleRegister {
         $gstAmt = max(0, (float)($merged['gst_amount'] ?? 0));
         $db->prepare("UPDATE sale_register SET gst_amount = :gst WHERE id = :id")->execute(['gst' => $gstAmt, 'id' => $id]);
         \Services\VoucherAllocationService::recalculateInvoice('SALE_REGISTER', $id);
+        $paidAmt = array_key_exists('paid_amount', $data)
+            ? min($newTotal, max(0, (float)$data['paid_amount']))
+            : (float)($existing['paid_amount'] ?? 0);
+        $outAmt = max(0, round($newTotal - $paidAmt, 2));
+        $payStatus = $outAmt <= 0.01 ? 'PAID' : ($paidAmt > 0 ? 'PARTIAL' : 'UNPAID');
+        $db->prepare("UPDATE sale_register SET paid_amount=:paid, outstanding_amount=:out, payment_status=:status WHERE id=:id")
+           ->execute(['paid' => $paidAmt, 'out' => $outAmt, 'status' => $payStatus, 'id' => $id]);
         self::postAccounting($id, $merged);
+        self::postInventoryAndDaily($id, $merged);
+        $db->commit();
         return self::findById($id);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
+        }
     }
 
     public static function softDelete(int $id): bool {
         $db = Database::getConnection();
-        if (\Services\VoucherAllocationService::countActiveAllocationsForInvoice('SALE_REGISTER', $id) > 0) {
-            throw new Exception('Cannot cancel/delete this Sales Invoice because receipt payments are allocated against it. Please cancel or unallocate the receipt voucher(s) first.');
+        $db->beginTransaction();
+        try {
+            if (\Services\VoucherAllocationService::countActiveAllocationsForInvoice('SALE_REGISTER', $id) > 0) {
+                throw new Exception('Cannot cancel/delete this Sales Invoice because receipt payments are allocated against it. Please cancel or unallocate the receipt voucher(s) first.');
+            }
+            $row = self::findById($id);
+            if (!$row) {
+                $db->rollBack();
+                return false;
+            }
+            $stmt = $db->prepare("UPDATE sale_register SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
+            $stmt->execute(['id' => $id]);
+            if ($stmt->rowCount() > 0) {
+                \Services\AccountingEngine::reverseReference('SALE_REGISTER', $id);
+                \Services\InventoryPostingService::reverseMovement('SALE_REGISTER', $id);
+                \Services\InventoryPostingService::reverseDaily('Sale', (string)$row['voucher_no']);
+                $db->commit();
+                return true;
+            }
+            $db->rollBack();
+            return false;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
         }
-        $stmt = $db->prepare("UPDATE sale_register SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
-        $stmt->execute(['id' => $id]);
-        if ($stmt->rowCount() > 0) {
-            try { \Services\AccountingEngine::reverseReference('SALE_REGISTER', $id); } catch (\Throwable $e) {}
-            return true;
-        }
-        return false;
     }
 
     private static function postAccounting(int $id, array $data): void {
-        try {
-            $amt = max(0, (float)($data['amount'] ?? $data['sale_value'] ?? 0));
-            if ($amt <= 0) return;
-            $gst = max(0, min($amt, (float)($data['gst_amount'] ?? 0)));
-            $taxable = round($amt - $gst, 2);
-            $partyName = trim((string)($data['party_name'] ?? 'Cash Customer'));
-            $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
-            $partyLedgerId = \Services\PartyLedgerSync::resolveOrCreatePartyLedger($partyName, 'Sundry Debtors (Customers)');
-            $salesLedgerId = \Services\PartyLedgerSync::getSystemLedger('Sales Account', 'Sales Accounts', 'INCOME');
-            $narr = 'Sale ' . ($data['voucher_no'] ?? "#$id") . ' - ' . ($data['item_name'] ?? '');
-            $entries = [
-                ['ledger_id' => $partyLedgerId, 'debit' => $amt, 'credit' => 0, 'narration' => $narr],
-                ['ledger_id' => $salesLedgerId, 'debit' => 0, 'credit' => $taxable, 'narration' => $narr],
-            ];
-            if ($gst > 0) {
-                $gstLedgerId = \Services\PartyLedgerSync::getSystemLedger('GST Output', 'Duties & Taxes', 'LIABILITY');
-                $entries[] = ['ledger_id' => $gstLedgerId, 'debit' => 0, 'credit' => $gst, 'narration' => "GST Output - $narr"];
-            }
-            \Services\AccountingEngine::postReference('SALE_REGISTER', $id, $date, $entries, $narr);
-        } catch (\Throwable $e) {}
+        $amt = max(0, (float)($data['amount'] ?? $data['sale_value'] ?? 0));
+        if ($amt <= 0) {
+            throw new Exception('Sale amount must be greater than zero.');
+        }
+        $gst = max(0, min($amt, (float)($data['gst_amount'] ?? 0)));
+        $taxable = round($amt - $gst, 2);
+        $paid = min($amt, max(0, (float)($data['paid_amount'] ?? 0)));
+        $partyName = trim((string)($data['party_name'] ?? 'Cash Customer'));
+        $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+        $partyLedgerId = \Services\PartyLedgerSync::resolveOrCreatePartyLedger($partyName, 'Sundry Debtors (Customers)');
+        $salesLedgerId = \Services\PartyLedgerSync::getSystemLedger('Sales Account', 'Sales Accounts', 'INCOME');
+        $narr = 'Sale ' . ($data['voucher_no'] ?? "#$id") . ' - ' . ($data['item_name'] ?? '');
+        $entries = [];
+        if ($paid > 0) {
+            $paymentMode = strtoupper((string)($data['payment_mode'] ?? 'CASH'));
+            $cashLedgerName = $paymentMode === 'BANK' ? 'Bank Account' : 'Cash in Hand';
+            $cashLedgerId = \Services\PartyLedgerSync::getSystemLedger($cashLedgerName, $paymentMode === 'BANK' ? 'Bank Accounts' : 'Cash-in-hand', 'ASSET');
+            $entries[] = ['ledger_id' => $cashLedgerId, 'debit' => $paid, 'credit' => 0, 'narration' => $narr];
+        }
+        $remaining = round($amt - $paid, 2);
+        if ($remaining > 0) {
+            $entries[] = ['ledger_id' => $partyLedgerId, 'debit' => $remaining, 'credit' => 0, 'narration' => $narr];
+        }
+        $entries[] = ['ledger_id' => $salesLedgerId, 'debit' => 0, 'credit' => $taxable, 'narration' => $narr];
+        if ($gst > 0) {
+            $gstLedgerId = \Services\PartyLedgerSync::getSystemLedger('GST Output', 'Duties & Taxes', 'LIABILITY');
+            $entries[] = ['ledger_id' => $gstLedgerId, 'debit' => 0, 'credit' => $gst, 'narration' => "GST Output - $narr"];
+        }
+        \Services\AccountingEngine::postReference('SALE_REGISTER', $id, $date, $entries, $narr);
+    }
+
+    private static function nextVoucherNo(): string {
+        $db = Database::getConnection();
+        $date = date('Ymd');
+        $prefix = 'SAL-' . $date . '-';
+        $stmt = $db->prepare("SELECT voucher_no FROM sale_register WHERE voucher_no LIKE :prefix ORDER BY id DESC LIMIT 1");
+        $stmt->execute(['prefix' => $prefix . '%']);
+        $last = $stmt->fetchColumn();
+        $seq = $last ? ((int)substr((string)$last, strlen($prefix)) + 1) : 1;
+        return $prefix . str_pad((string)$seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    private static function postInventoryAndDaily(int $id, array $data): void {
+        $row = self::findById($id);
+        $voucherNo = trim((string)($data['voucher_no'] ?? ($row['voucher_no'] ?? "#$id")));
+        $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+        $party = trim((string)($data['party_name'] ?? 'Cash Customer'));
+        $itemName = trim((string)($data['item_name'] ?? $data['particular'] ?? 'Sale Item'));
+        $itemCode = trim((string)($data['item_code'] ?? ''));
+        $amount = max(0, (float)($data['amount'] ?? $data['sale_value'] ?? 0));
+        $narration = 'Sale ' . $voucherNo;
+        $pieces = max(0, (int)($data['pieces'] ?? $row['pieces'] ?? 0));
+
+        \Services\InventoryPostingService::postMovement(
+            'SALE_REGISTER', $id, 'SALE', $itemName, $itemCode,
+            $pieces, (float)($data['gross_weight'] ?? 0),
+            (float)($data['net_weight'] ?? 0), $date, $narration
+        );
+        \Services\InventoryPostingService::postDaily(
+            'Sale', $party, $voucherNo, $date, $amount,
+            (float)($data['gross_weight'] ?? 0), (float)($data['net_weight'] ?? 0), $narration,
+            $pieces
+        );
+    }
+
+    private static function updateDailyBalance(int $id, array $data): void {
+        $row = self::findById($id);
+        $voucherNo = trim((string)($data['voucher_no'] ?? ($row['voucher_no'] ?? "#$id")));
+        $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+        $partyName = trim((string)($data['party_name'] ?? 'Cash Customer'));
+        $goldWeight = max(0, (float)($data['gold_weight'] ?? $row['gold_weight'] ?? 0));
+        $silverWeight = max(0, (float)($data['silver_weight'] ?? $row['silver_weight'] ?? 0));
+        $amount = max(0, (float)($data['amount'] ?? $data['sale_value'] ?? 0));
+
+        $db = Database::getConnection();
+
+        // Check if daily balance record exists for this party name and date
+        $check = $db->prepare("
+            SELECT id FROM daily_balance
+            WHERE account_name = :name AND balance_date = :bd
+        ");
+        $check->execute(['name' => $partyName, 'bd' => $date]);
+        $existing = $check->fetchColumn();
+
+        $goldFine = $goldWeight > 0 ? round($goldWeight * 0.900, 3) : 0;
+        $silverFine = $silverWeight > 0 ? round($silverWeight * 0.925, 3) : 0;
+
+        if ($existing) {
+            // Update existing record
+            $db->prepare("
+                UPDATE daily_balance SET
+                    amount = amount + :inc_amount,
+                    gold_fine = gold_fine + :inc_gold_fine,
+                    silver_fine = silver_fine + :inc_silver_fine,
+                    gold_gross_weight = gold_gross_weight + :inc_gross_wt,
+                    silver_gross_weight = silver_gross_weight + :inc_silver_wt,
+                    updated_at = NOW()
+                WHERE id = :id
+            ")->execute([
+                'inc_amount' => $amount,
+                'inc_gold_fine' => $goldFine,
+                'inc_silver_fine' => $silverFine,
+                'inc_gross_wt' => $goldWeight,
+                'inc_silver_wt' => $silverWeight,
+                'id' => (int)$existing,
+            ]);
+        } else {
+            // Create new record
+            $db->prepare("
+                INSERT INTO daily_balance (
+                    party_id, account_name, balance_date, amount,
+                    gold_fine, silver_fine, gold_gross_weight, silver_gross_weight
+                ) VALUES (
+                    NULL, :name, :bd, :amt,
+                    :gf, :sf, :gw, :sw
+                )
+            ")->execute([
+                'name' => $partyName,
+                'bd' => $date,
+                'amt' => $amount,
+                'gf' => $goldFine,
+                'sf' => $silverFine,
+                'gw' => $goldWeight,
+                'sw' => $silverWeight,
+            ]);
+        }
     }
 
     public static function filterOptions(): array {

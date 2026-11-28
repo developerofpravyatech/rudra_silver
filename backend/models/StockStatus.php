@@ -29,21 +29,111 @@ class StockStatus {
     /**
      * Build WHERE conditions and query parameters from user filters
      */
-    private static function buildWhereClause(?string $search, ?string $unit): array {
+    private static function getStockStatusColumns(): array {
+        static $columns = null;
+        if ($columns === null) {
+            $db = Database::getConnection();
+            $stmt = $db->query("SHOW COLUMNS FROM stock_status");
+            $columns = array_map(static fn(array $row): string => (string)$row['Field'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+        }
+        return $columns;
+    }
+
+    private static function firstExistingColumn(array $candidates): ?string {
+        foreach ($candidates as $candidate) {
+            if (in_array($candidate, self::getStockStatusColumns(), true)) return $candidate;
+        }
+        return null;
+    }
+
+    private static function buildWhereClause(
+        ?string $search = null, ?string $unit = null, ?string $typeWiseGroup = null,
+        ?string $statusFilter = null, ?string $itemType = null, ?string $itemNameFilter = null,
+        ?string $itemDropdown = null, ?string $dateFrom = null, ?string $dateTo = null,
+        ?string $approvalFlag = null, ?string $entryWiseFlag = null, ?string $kachiList = null,
+        ?string $itemWiseFilter = null, ?string $allRecords = null
+    ): array {
         $where = ['1=1'];
         $params = [];
+        $columns = self::getStockStatusColumns();
+        $addLike = static function (string $column, string $key, string $value) use (&$where, &$params): void {
+            if (trim($value) !== '') {
+                $where[] = "{$column} LIKE :{$key}";
+                $params[$key] = '%' . trim($value) . '%';
+            }
+        };
 
-        if ($search !== null && trim($search) !== '') {
-            $where[] = 'item_name LIKE :search';
-            $params['search'] = '%' . trim($search) . '%';
-        }
-
-        if ($unit !== null && trim($unit) !== '' && trim($unit) !== 'all') {
+        if ($search !== null && trim($search) !== '') $addLike('item_name', 'search', $search);
+        if ($unit !== null && trim($unit) !== '' && strtolower(trim($unit)) !== 'all') {
             $where[] = 'unit = :unit';
             $params['unit'] = trim($unit);
         }
+        if ($typeWiseGroup !== null && trim($typeWiseGroup) !== '' && trim($typeWiseGroup) !== 'ALL GROUP') {
+            $groupColumn = self::firstExistingColumn(['group_name', 'item_group_name', 'type_wise_group', 'group_name']);
+            if ($groupColumn !== null) {
+                $where[] = "`{$groupColumn}` = :type_group";
+                $params['type_group'] = trim($typeWiseGroup);
+            } else {
+                $addLike('item_name', 'type_group', $typeWiseGroup);
+            }
+        }
+
+        if ($statusFilter !== null && trim($statusFilter) !== '' && trim($statusFilter) !== 'All') {
+            switch (trim($statusFilter)) {
+                case 'In Stock': $where[] = 'pc <> 0'; break;
+                case 'M.Stock':
+                    $where[] = 'unit IN (:mstock1, :mstock2, :mstock3)';
+                    $params['mstock1'] = 'Gm'; $params['mstock2'] = 'Pcs'; $params['mstock3'] = 'Kg';
+                    break;
+                case 'Studed': $where[] = 'tunch IS NOT NULL AND tunch <> 0'; break;
+                case 'Negative': $where[] = 'pc < 0'; break;
+                case 'WO Studed': $where[] = 'tunch IS NULL'; break;
+                case 'Sh/Ex': $where[] = 'COALESCE(gross_weight, 0) <> COALESCE(net_weight, 0)'; break;
+                case 'Batch': if (in_array('is_sample', $columns, true)) $where[] = 'is_sample = 1'; break;
+            }
+        }
+
+        if ($itemType !== null && trim($itemType) !== '' && trim($itemType) !== 'All') {
+            $typeColumn = self::firstExistingColumn(['item_type', 'stock_type', 'type_name']);
+            if ($typeColumn !== null) {
+                $where[] = "`{$typeColumn}` = :item_type";
+                $params['item_type'] = trim($itemType);
+            } else {
+                $addLike('item_name', 'item_type', $itemType);
+            }
+        }
+        if ($itemNameFilter !== null && trim($itemNameFilter) !== '') $addLike('item_name', 'item_name_filter', $itemNameFilter);
+        if ($itemDropdown !== null && trim($itemDropdown) !== '' && trim($itemDropdown) !== 'ALL ITEM') {
+            $where[] = 'item_name = :item_dropdown';
+            $params['item_dropdown'] = trim($itemDropdown);
+        }
+        if ($dateFrom !== null && trim($dateFrom) !== '' && in_array('created_at', $columns, true)) {
+            $where[] = 'created_at >= :date_from';
+            $params['date_from'] = trim($dateFrom) . ' 00:00:00';
+        }
+        if ($dateTo !== null && trim($dateTo) !== '' && in_array('created_at', $columns, true)) {
+            $where[] = 'created_at <= :date_to';
+            $params['date_to'] = trim($dateTo) . ' 23:59:59';
+        }
+        if ($approvalFlag !== null && trim($approvalFlag) !== '') {
+            $approvalColumn = self::firstExistingColumn(['with_approval', 'is_approved', 'approval']);
+            if ($approvalColumn !== null) $where[] = "`{$approvalColumn}` = 1";
+        }
+        if ($entryWiseFlag !== null && trim($entryWiseFlag) !== '') {
+            $entryColumn = self::firstExistingColumn(['entry_wise', 'is_entry_wise', 'entry_wise_flag']);
+            if ($entryColumn !== null) $where[] = "`{$entryColumn}` = 1";
+        }
+        if ($kachiList !== null && trim($kachiList) !== '') $addLike('item_name', 'kachi_list', $kachiList === 'Kachi' ? 'Kachi' : $kachiList);
+        if ($itemWiseFilter !== null && trim($itemWiseFilter) !== '') $addLike('item_name', 'item_wise_filter', $itemWiseFilter);
 
         return [implode(' AND ', $where), $params];
+    }
+
+    public static function getFilterCapabilities(): array {
+        return [
+            'with_approval' => self::firstExistingColumn(['with_approval', 'is_approved', 'approval']) !== null,
+            'entry_wise' => self::firstExistingColumn(['entry_wise', 'is_entry_wise', 'entry_wise_flag']) !== null,
+        ];
     }
 
     /**
@@ -52,13 +142,25 @@ class StockStatus {
     public static function paginate(
         ?string $search = null,
         ?string $unit = null,
+        ?string $typeWiseGroup = null,
+        ?string $statusFilter = null,
+        ?string $itemType = null,
+        ?string $itemNameFilter = null,
+        ?string $itemDropdown = null,
+        ?string $dateFrom = null,
+        ?string $dateTo = null,
+        ?string $approvalFlag = null,
+        ?string $entryWiseFlag = null,
+        ?string $kachiList = null,
+        ?string $itemWiseFilter = null,
+        ?string $allRecords = null,
         string $sortBy = 'id',
         string $sortOrder = 'asc',
         int $page = 1,
         int $limit = 10
     ): array {
         $db = Database::getConnection();
-        [$whereSql, $params] = self::buildWhereClause($search, $unit);
+        [$whereSql, $params] = self::buildWhereClause($search, $unit, $typeWiseGroup, $statusFilter, $itemType, $itemNameFilter, $itemDropdown, $dateFrom, $dateTo, $approvalFlag, $entryWiseFlag, $kachiList, $itemWiseFilter, $allRecords);
 
         // Calculate Grand Totals across ALL matching records (not just the current page)
         $summarySql = "SELECT 
@@ -340,45 +442,54 @@ class StockStatus {
      */
     public static function getDistinctUnits(): array {
         $db = Database::getConnection();
-        $stmt = $db->query("SELECT DISTINCT unit FROM stock_status WHERE unit IS NOT NULL AND TRIM(unit) != '' ORDER BY unit ASC");
-        $units = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        return $units ?: ['Gm', 'Pcs', 'Kg', 'Ct'];
+        $units = [];
+        try {
+            $masterStmt = $db->query("SELECT name FROM units WHERE is_active = 1 ORDER BY name ASC");
+            $units = array_merge($units, $masterStmt->fetchAll(PDO::FETCH_COLUMN));
+        } catch (Exception $e) {
+            // Keep legacy unit names available if Unit Master is not installed.
+        }
+        $legacyStmt = $db->query("SELECT DISTINCT unit FROM stock_status WHERE unit IS NOT NULL AND TRIM(unit) <> '' ORDER BY unit ASC");
+        $units = array_merge($units, $legacyStmt->fetchAll(PDO::FETCH_COLUMN));
+        $unique = [];
+        foreach ($units as $unit) {
+            $name = trim((string)$unit);
+            if ($name !== '') $unique[strtolower($name)] = $name;
+        }
+        return array_values($unique);
     }
 
     /**
      * Fetch all matching records without pagination for exports (CSV, Excel, PDF)
      */
-    public static function getAllMatching(?string $search = null, ?string $unit = null): array {
+    public static function getAllMatching(
+        ?string $search = null, ?string $unit = null, ?string $typeWiseGroup = null,
+        ?string $statusFilter = null, ?string $itemType = null, ?string $itemNameFilter = null,
+        ?string $itemDropdown = null, ?string $dateFrom = null, ?string $dateTo = null,
+        ?string $approvalFlag = null, ?string $entryWiseFlag = null, ?string $kachiList = null,
+        ?string $itemWiseFilter = null, ?string $allRecords = null
+    ): array {
         $db = Database::getConnection();
-        [$whereSql, $params] = self::buildWhereClause($search, $unit);
-
+        [$whereSql, $params] = self::buildWhereClause(
+            $search, $unit, $typeWiseGroup, $statusFilter, $itemType, $itemNameFilter,
+            $itemDropdown, $dateFrom, $dateTo, $approvalFlag, $entryWiseFlag,
+            $kachiList, $itemWiseFilter, $allRecords
+        );
         $sql = "SELECT id, item_name, unit, pc, gross_weight, net_weight, tunch, wastage,
-                       labour_weight, rate, silver_fine, total, gold_fine, created_at
-                FROM stock_status
-                WHERE {$whereSql}
-                ORDER BY id ASC";
-
+                       labour_weight, rate, silver_fine, total, gold_fine, is_sample, created_at
+                FROM stock_status WHERE {$whereSql} ORDER BY id ASC";
         $stmt = $db->prepare($sql);
-        foreach ($params as $key => $val) {
-            $stmt->bindValue($key, $val);
-        }
+        foreach ($params as $key => $val) $stmt->bindValue($key, $val);
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
         foreach ($rows as &$row) {
             $row['id'] = (int)$row['id'];
-            $row['pc'] = $row['pc'] !== null ? (float)$row['pc'] : null;
-            $row['gross_weight'] = $row['gross_weight'] !== null ? (float)$row['gross_weight'] : null;
-            $row['net_weight'] = $row['net_weight'] !== null ? (float)$row['net_weight'] : null;
-            $row['tunch'] = $row['tunch'] !== null ? (float)$row['tunch'] : null;
-            $row['wastage'] = $row['wastage'] !== null ? (float)$row['wastage'] : null;
-            $row['labour_weight'] = $row['labour_weight'] !== null ? (float)$row['labour_weight'] : null;
-            $row['rate'] = $row['rate'] !== null ? (float)$row['rate'] : null;
-            $row['silver_fine'] = $row['silver_fine'] !== null ? (float)$row['silver_fine'] : null;
-            $row['total'] = $row['total'] !== null ? (float)$row['total'] : null;
-            $row['gold_fine'] = $row['gold_fine'] !== null ? (float)$row['gold_fine'] : null;
+            foreach (['pc', 'gross_weight', 'net_weight', 'tunch', 'wastage', 'labour_weight', 'rate', 'silver_fine', 'total', 'gold_fine'] as $field) {
+                $row[$field] = $row[$field] !== null ? (float)$row[$field] : null;
+            }
+            $row['is_sample'] = (bool)($row['is_sample'] ?? false);
         }
-
         return $rows;
     }
+
 }

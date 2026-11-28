@@ -268,56 +268,91 @@ class Customer {
         }
 
         $db = Database::getConnection();
-        $sql = "INSERT INTO customer (
-            Name, Address1, Address2, Address3, FirmName, Location,
-            Occupation, City, Pin, Country, Phone, Mobile, Email,
-            DOB, Anniversary, Spouse, SpouseDOB, Gender, Married,
-            JewKnow, Education, Potential, PANNo, Aadhaar, GSTNo,
-            RefBy, Remarks, RingSize, BangleSize, LeaveBlank, CreatedAt, UpdatedAt
-        ) VALUES (
-            :Name, :Address1, :Address2, :Address3, :FirmName, :Location,
-            :Occupation, :City, :Pin, :Country, :Phone, :Mobile, :Email,
-            :DOB, :Anniversary, :Spouse, :SpouseDOB, :Gender, :Married,
-            :JewKnow, :Education, :Potential, :PANNo, :Aadhaar, :GSTNo,
-            :RefBy, :Remarks, :RingSize, :BangleSize, :LeaveBlank, NOW(), NOW()
-        )";
+        // Start transaction: create customer and linked ledger atomically
+        $db->beginTransaction();
+        try {
+            $sql = "INSERT INTO customer (
+                Name, Address1, Address2, Address3, FirmName, Location,
+                Occupation, City, Pin, Country, Phone, Mobile, Email,
+                DOB, Anniversary, Spouse, SpouseDOB, Gender, Married,
+                JewKnow, Education, Potential, PANNo, Aadhaar, GSTNo,
+                RefBy, Remarks, RingSize, BangleSize, LeaveBlank, CreatedAt, UpdatedAt
+            ) VALUES (
+                :Name, :Address1, :Address2, :Address3, :FirmName, :Location,
+                :Occupation, :City, :Pin, :Country, :Phone, :Mobile, :Email,
+                :DOB, :Anniversary, :Spouse, :SpouseDOB, :Gender, :Married,
+                :JewKnow, :Education, :Potential, :PANNo, :Aadhaar, :GSTNo,
+                :RefBy, :Remarks, :RingSize, :BangleSize, :LeaveBlank, NOW(), NOW()
+            )";
 
-        $stmt = $db->prepare($sql);
-        $stmt->execute([
-            ':Name'        => $normalized['Name'],
-            ':Address1'    => $normalized['Address1'] ?: null,
-            ':Address2'    => $normalized['Address2'] ?: null,
-            ':Address3'    => $normalized['Address3'] ?: null,
-            ':FirmName'    => $normalized['FirmName'] ?: null,
-            ':Location'    => $normalized['Location'] ?: null,
-            ':Occupation'  => $normalized['Occupation'] ?: null,
-            ':City'        => $normalized['City'] ?: null,
-            ':Pin'         => $normalized['Pin'] ?: null,
-            ':Country'     => $normalized['Country'] ?: 'India',
-            ':Phone'       => $normalized['Phone'] ?: null,
-            ':Mobile'      => $normalized['Mobile'] ?: null,
-            ':Email'       => $normalized['Email'] ?: null,
-            ':DOB'         => $normalized['DOB'] ?: null,
-            ':Anniversary' => $normalized['Anniversary'] ?: null,
-            ':Spouse'      => $normalized['Spouse'] ?: null,
-            ':SpouseDOB'   => $normalized['SpouseDOB'] ?: null,
-            ':Gender'      => $normalized['Gender'] ?: 'Male',
-            ':Married'     => (int)$normalized['Married'],
-            ':JewKnow'     => $normalized['JewKnow'] ?: null,
-            ':Education'   => $normalized['Education'] ?: null,
-            ':Potential'   => (float)$normalized['Potential'],
-            ':PANNo'       => $normalized['PANNo'] ?: null,
-            ':Aadhaar'     => $normalized['Aadhaar'] ?: null,
-            ':GSTNo'       => $normalized['GSTNo'] ?: null,
-            ':RefBy'       => $normalized['RefBy'] ?: null,
-            ':Remarks'     => $normalized['Remarks'] ?: null,
-            ':RingSize'    => $normalized['RingSize'] ?: null,
-            ':BangleSize'  => $normalized['BangleSize'] ?: null,
-            ':LeaveBlank'  => (int)$normalized['LeaveBlank'],
-        ]);
+            $stmt = $db->prepare($sql);
+            $stmt->execute([
+                ':Name'        => $normalized['Name'],
+                ':Address1'    => $normalized['Address1'] ?: null,
+                ':Address2'    => $normalized['Address2'] ?: null,
+                ':Address3'    => $normalized['Address3'] ?: null,
+                ':FirmName'    => $normalized['FirmName'] ?: null,
+                ':Location'    => $normalized['Location'] ?: null,
+                ':Occupation'  => $normalized['Occupation'] ?: null,
+                ':City'        => $normalized['City'] ?: null,
+                ':Pin'         => $normalized['Pin'] ?: null,
+                ':Country'     => $normalized['Country'] ?: 'India',
+                ':Phone'       => $normalized['Phone'] ?: null,
+                ':Mobile'      => $normalized['Mobile'] ?: null,
+                ':Email'       => $normalized['Email'] ?: null,
+                ':DOB'         => $normalized['DOB'] ?: null,
+                ':Anniversary' => $normalized['Anniversary'] ?: null,
+                ':Spouse'      => $normalized['Spouse'] ?: null,
+                ':SpouseDOB'   => $normalized['SpouseDOB'] ?: null,
+                ':Gender'      => $normalized['Gender'] ?: 'Male',
+                ':Married'     => (int)$normalized['Married'],
+                ':JewKnow'     => $normalized['JewKnow'] ?: null,
+                ':Education'   => $normalized['Education'] ?: null,
+                ':Potential'   => (float)$normalized['Potential'],
+                ':PANNo'       => $normalized['PANNo'] ?: null,
+                ':Aadhaar'     => $normalized['Aadhaar'] ?: null,
+                ':GSTNo'       => $normalized['GSTNo'] ?: null,
+                ':RefBy'       => $normalized['RefBy'] ?: null,
+                ':Remarks'     => $normalized['Remarks'] ?: null,
+                ':RingSize'    => $normalized['RingSize'] ?: null,
+                ':BangleSize'  => $normalized['BangleSize'] ?: null,
+                ':LeaveBlank'  => (int)$normalized['LeaveBlank'],
+            ]);
 
-        $newId = (int)$db->lastInsertId();
-        try { \Services\PartyLedgerSync::resolveOrCreatePartyLedger($normalized['Name'], 'Sundry Debtors (Customers)'); } catch (\Throwable $e) {}
+            $newId = (int)$db->lastInsertId();
+
+            // Auto-create linked ledger in Ledger Master (Sundry Debtors group)
+            // Use same transaction so rollback occurs if ledger creation fails
+            $ledgerName = $normalized['Name'];
+            // Check if ledger already exists for this customer name (duplicate prevention)
+            $checkStmt = $db->prepare("SELECT id FROM ledgers WHERE ledger_name = :name AND status != 'DELETED' LIMIT 1");
+            $checkStmt->execute([':name' => $ledgerName]);
+            $existingLedgerId = $checkStmt->fetchColumn();
+
+            if ($existingLedgerId) {
+                // Ledger already exists - link it to this customer via account_ref_id
+                $updateStmt = $db->prepare("UPDATE ledgers SET account_ref_id = :cid WHERE id = :lid");
+                $updateStmt->execute([':cid' => $newId, ':lid' => $existingLedgerId]);
+            } else {
+                // Create new ledger under Sundry Debtors (Customers) group
+                $groupStmt = $db->prepare("SELECT id FROM account_groups WHERE name = :gname LIMIT 1");
+                $groupStmt->execute([':gname' => 'Sundry Debtors (Customers)']);
+                $groupId = (int)($groupStmt->fetchColumn() ?: 1);
+
+                $code = \Models\Ledger::nextCode();
+                $ins = $db->prepare("
+                    INSERT INTO ledgers (ledger_code, ledger_name, group_id, opening_balance, opening_balance_type, status, account_ref_id, created_at, updated_at)
+                    VALUES (:code, :name, :gid, 0, 'NIL', 'ACTIVE', :cid, NOW(), NOW())
+                ");
+                $ins->execute([':code' => $code, ':name' => $ledgerName, ':gid' => $groupId, ':cid' => $newId]);
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw new Exception('Failed to create customer and linked ledger: ' . $e->getMessage());
+        }
+
         return self::findById($newId);
     }
 
@@ -338,74 +373,100 @@ class Customer {
         }
 
         $db = Database::getConnection();
-        $sql = "UPDATE customer SET
-            Name        = :Name,
-            Address1    = :Address1,
-            Address2    = :Address2,
-            Address3    = :Address3,
-            FirmName    = :FirmName,
-            Location    = :Location,
-            Occupation  = :Occupation,
-            City        = :City,
-            Pin         = :Pin,
-            Country     = :Country,
-            Phone       = :Phone,
-            Mobile      = :Mobile,
-            Email       = :Email,
-            DOB         = :DOB,
-            Anniversary = :Anniversary,
-            Spouse      = :Spouse,
-            SpouseDOB   = :SpouseDOB,
-            Gender      = :Gender,
-            Married     = :Married,
-            JewKnow     = :JewKnow,
-            Education   = :Education,
-            Potential   = :Potential,
-            PANNo       = :PANNo,
-            Aadhaar     = :Aadhaar,
-            GSTNo       = :GSTNo,
-            RefBy       = :RefBy,
-            Remarks     = :Remarks,
-            RingSize    = :RingSize,
-            BangleSize  = :BangleSize,
-            LeaveBlank  = :LeaveBlank,
-            UpdatedAt   = NOW()
-        WHERE CustomerID = :id";
+        // Start transaction: update customer and linked ledger atomically
+        $db->beginTransaction();
+        try {
+            // Update customer record
+            $sql = "UPDATE customer SET
+                Name        = :Name,
+                Address1    = :Address1,
+                Address2    = :Address2,
+                Address3    = :Address3,
+                FirmName    = :FirmName,
+                Location    = :Location,
+                Occupation  = :Occupation,
+                City        = :City,
+                Pin         = :Pin,
+                Country     = :Country,
+                Phone       = :Phone,
+                Mobile      = :Mobile,
+                Email       = :Email,
+                DOB         = :DOB,
+                Anniversary = :Anniversary,
+                Spouse      = :Spouse,
+                SpouseDOB   = :SpouseDOB,
+                Gender      = :Gender,
+                Married     = :Married,
+                JewKnow     = :JewKnow,
+                Education   = :Education,
+                Potential   = :Potential,
+                PANNo       = :PANNo,
+                Aadhaar     = :Aadhaar,
+                GSTNo       = :GSTNo,
+                RefBy       = :RefBy,
+                Remarks     = :Remarks,
+                RingSize    = :RingSize,
+                BangleSize  = :BangleSize,
+                LeaveBlank  = :LeaveBlank,
+                UpdatedAt   = NOW()
+            WHERE CustomerID = :id";
 
-        $stmt = $db->prepare($sql);
-        $stmt->execute([
-            ':id'          => $id,
-            ':Name'        => $normalized['Name'],
-            ':Address1'    => $normalized['Address1'] ?: null,
-            ':Address2'    => $normalized['Address2'] ?: null,
-            ':Address3'    => $normalized['Address3'] ?: null,
-            ':FirmName'    => $normalized['FirmName'] ?: null,
-            ':Location'    => $normalized['Location'] ?: null,
-            ':Occupation'  => $normalized['Occupation'] ?: null,
-            ':City'        => $normalized['City'] ?: null,
-            ':Pin'         => $normalized['Pin'] ?: null,
-            ':Country'     => $normalized['Country'] ?: 'India',
-            ':Phone'       => $normalized['Phone'] ?: null,
-            ':Mobile'      => $normalized['Mobile'] ?: null,
-            ':Email'       => $normalized['Email'] ?: null,
-            ':DOB'         => $normalized['DOB'] ?: null,
-            ':Anniversary' => $normalized['Anniversary'] ?: null,
-            ':Spouse'      => $normalized['Spouse'] ?: null,
-            ':SpouseDOB'   => $normalized['SpouseDOB'] ?: null,
-            ':Gender'      => $normalized['Gender'] ?: 'Male',
-            ':Married'     => (int)$normalized['Married'],
-            ':JewKnow'     => $normalized['JewKnow'] ?: null,
-            ':Education'   => $normalized['Education'] ?: null,
-            ':Potential'   => (float)$normalized['Potential'],
-            ':PANNo'       => $normalized['PANNo'] ?: null,
-            ':Aadhaar'     => $normalized['Aadhaar'] ?: null,
-            ':GSTNo'       => $normalized['GSTNo'] ?: null,
-            ':RefBy'       => $normalized['RefBy'] ?: null,
-            ':Remarks'     => $normalized['Remarks'] ?: null,
-            ':RingSize'    => $normalized['RingSize'] ?: null,
-            ':BangleSize'  => $normalized['BangleSize'] ?: null,
-            ':LeaveBlank'  => (int)$normalized['LeaveBlank'],
-        ]);
+            $stmt = $db->prepare($sql);
+            $stmt->execute([
+                ':id'          => $id,
+                ':Name'        => $normalized['Name'],
+                ':Address1'    => $normalized['Address1'] ?: null,
+                ':Address2'    => $normalized['Address2'] ?: null,
+                ':Address3'    => $normalized['Address3'] ?: null,
+                ':FirmName'    => $normalized['FirmName'] ?: null,
+                ':Location'    => $normalized['Location'] ?: null,
+                ':Occupation'  => $normalized['Occupation'] ?: null,
+                ':City'        => $normalized['City'] ?: null,
+                ':Pin'         => $normalized['Pin'] ?: null,
+                ':Country'     => $normalized['Country'] ?: 'India',
+                ':Phone'       => $normalized['Phone'] ?: null,
+                ':Mobile'      => $normalized['Mobile'] ?: null,
+                ':Email'       => $normalized['Email'] ?: null,
+                ':DOB'         => $normalized['DOB'] ?: null,
+                ':Anniversary' => $normalized['Anniversary'] ?: null,
+                ':Spouse'      => $normalized['Spouse'] ?: null,
+                ':SpouseDOB'   => $normalized['SpouseDOB'] ?: null,
+                ':Gender'      => $normalized['Gender'] ?: 'Male',
+                ':Married'     => (int)$normalized['Married'],
+                ':JewKnow'     => $normalized['JewKnow'] ?: null,
+                ':Education'   => $normalized['Education'] ?: null,
+                ':Potential'   => (float)$normalized['Potential'],
+                ':PANNo'       => $normalized['PANNo'] ?: null,
+                ':Aadhaar'     => $normalized['Aadhaar'] ?: null,
+                ':GSTNo'       => $normalized['GSTNo'] ?: null,
+                ':RefBy'       => $normalized['RefBy'] ?: null,
+                ':Remarks'     => $normalized['Remarks'] ?: null,
+                ':RingSize'    => $normalized['RingSize'] ?: null,
+                ':BangleSize'  => $normalized['BangleSize'] ?: null,
+                ':LeaveBlank'  => (int)$normalized['LeaveBlank'],
+            ]);
+
+            // Update linked ledger name if customer name changed
+            $oldName = $existing['Name'];
+            $newName = $normalized['Name'];
+            if ($oldName !== $newName) {
+                // Find the existing ledger linked to this customer
+                $ledgerStmt = $db->prepare("SELECT id FROM ledgers WHERE account_ref_id = :cid AND status != 'DELETED' LIMIT 1");
+                $ledgerStmt->execute([':cid' => $id]);
+                $existingLedgerId = $ledgerStmt->fetchColumn();
+
+                if ($existingLedgerId) {
+                    // Update the ledger name to match new customer name
+                    $ledgerUpdate = $db->prepare("UPDATE ledgers SET ledger_name = :name WHERE id = :lid");
+                    $ledgerUpdate->execute([':name' => $newName, ':lid' => $existingLedgerId]);
+                }
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            throw new Exception('Failed to update customer and linked ledger: ' . $e->getMessage());
+        }
 
         return self::findById($id);
     }

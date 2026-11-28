@@ -152,8 +152,6 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
       if (!/^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}Z[0-9A-Za-z]{1}$/.test(formData.GSTNo.trim())) {
         newErrors.GSTNo = 'GST Number must be a valid 15-character GSTIN.';
       }
-    } else {
-      newErrors.GSTNo = 'GST Number is required.';
     }
 
     // 9. Potential validation (required if provided)
@@ -253,7 +251,7 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
     if (firstInvalid) {
       setTimeout(() => {
         const el = (document.querySelector(`[name="${firstInvalid}"]`) ||
-                    document.querySelector('.border-red-500, .border-red-400')) as HTMLElement | null;
+          document.querySelector('.border-red-500, .border-red-400')) as HTMLElement | null;
         if (el) {
           el.focus();
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -446,9 +444,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                   }
                 }}
                 placeholder="e.g. Rajesh Kumar Sharma"
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${
-                  errors.Name ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all ${errors.Name ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Name && <p className="text-[11px] text-red-500 mt-1">{errors.Name}</p>}
             </div>
@@ -479,9 +476,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 max={todayStr}
                 value={formData.DOB}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.DOB ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.DOB ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.DOB && <p className="text-[11px] text-red-500 mt-1">{errors.DOB}</p>}
             </div>
@@ -542,9 +538,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 max={todayStr}
                 value={formData.SpouseDOB}
                 onChange={handleInputChange}
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.SpouseDOB ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.SpouseDOB ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.SpouseDOB && <p className="text-[11px] text-red-500 mt-1">{errors.SpouseDOB}</p>}
             </div>
@@ -599,9 +594,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 value={formData.Mobile}
                 onChange={handleInputChange}
                 placeholder="10 digit mobile"
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.Mobile ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.Mobile ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Mobile && <p className="text-[11px] text-red-500 mt-1">{errors.Mobile}</p>}
             </div>
@@ -630,9 +624,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 value={formData.Email}
                 onChange={handleInputChange}
                 placeholder="customer@domain.com"
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.Email ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.Email ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Email && <p className="text-[11px] text-red-500 mt-1">{errors.Email}</p>}
             </div>
@@ -676,9 +669,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 value={formData.Pin}
                 onChange={handleInputChange}
                 placeholder="6 digits"
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.Pin ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.Pin ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Pin && <p className="text-[11px] text-red-500 mt-1">{errors.Pin}</p>}
             </div>
@@ -777,9 +769,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 value={formData.Potential}
                 onChange={handleInputChange}
                 placeholder="0.00"
-                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.Potential ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.Potential ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Potential && <p className="text-[11px] text-red-500 mt-1">{errors.Potential}</p>}
             </div>
@@ -798,9 +789,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                   if (errors.PANNo) setErrors((prev) => ({ ...prev, PANNo: '' }));
                 }}
                 placeholder="ABCDE1234F"
-                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.PANNo ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.PANNo ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.PANNo && <p className="text-[11px] text-red-500 mt-1">{errors.PANNo}</p>}
             </div>
@@ -816,9 +806,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                 value={formData.Aadhaar}
                 onChange={handleInputChange}
                 placeholder="12 digits"
-                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.Aadhaar ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.Aadhaar ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.Aadhaar && <p className="text-[11px] text-red-500 mt-1">{errors.Aadhaar}</p>}
             </div>
@@ -837,9 +826,8 @@ export const CustomerAddPage: React.FC<CustomerAddPageProps> = ({ onBackToList }
                   if (errors.GSTNo) setErrors((prev) => ({ ...prev, GSTNo: '' }));
                 }}
                 placeholder="15-char GSTIN"
-                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                  errors.GSTNo ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
-                }`}
+                className={`w-full px-3 py-2 text-xs font-mono rounded-xl border bg-slate-50/50 dark:bg-slate-900/50 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${errors.GSTNo ? 'border-red-500 text-red-900' : 'border-slate-200 dark:border-slate-700'
+                  }`}
               />
               {errors.GSTNo && <p className="text-[11px] text-red-500 mt-1">{errors.GSTNo}</p>}
             </div>

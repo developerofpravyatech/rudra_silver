@@ -194,7 +194,10 @@ export const CategoryListPage: React.FC<CategoryListPageProps> = ({
 
     try {
       const res = await deleteCategoryApi(deletingCategory.id);
-      showToast('success', res.message || `Category '${deletingCategory.name}' deleted successfully.`);
+      
+      // Handle both direct API response and alternative endpoint response
+      const message = res.message || `Category '${deletingCategory.name}' deleted successfully.`;
+      showToast('success', message);
       setDeletingCategory(null);
       loadData();
     } catch (err: any) {

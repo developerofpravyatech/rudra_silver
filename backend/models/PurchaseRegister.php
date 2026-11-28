@@ -258,10 +258,17 @@ class PurchaseRegister {
 
     public static function create(array $data): array {
         $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
 
         $voucherNo = trim((string)($data['voucher_no'] ?? ''));
         if ($voucherNo === '') {
-            $voucherNo = 'PUR-' . date('Ymd') . '-' . rand(100, 999);
+            $voucherNo = self::nextVoucherNo();
+        }
+        $dup = $db->prepare("SELECT id FROM purchase_register WHERE voucher_no = :no AND deleted_at IS NULL LIMIT 1");
+        $dup->execute(['no' => $voucherNo]);
+        if ($dup->fetchColumn()) {
+            throw new Exception("Duplicate purchase invoice number: {$voucherNo}");
         }
 
         $voucherDate = !empty($data['voucher_date']) ? $data['voucher_date'] : date('Y-m-d');
@@ -344,14 +351,28 @@ class PurchaseRegister {
         $id = (int)$db->lastInsertId();
         $invTotal = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
         $gstAmt = max(0, (float)($data['gst_amount'] ?? 0));
-        $db->prepare("UPDATE purchase_register SET gst_amount = :gst, paid_amount = 0, outstanding_amount = :out, payment_status = 'UNPAID' WHERE id = :id")
-           ->execute(['gst' => $gstAmt, 'out' => $invTotal, 'id' => $id]);
+        $paidAmt = min($invTotal, max(0, (float)($data['paid_amount'] ?? 0)));
+        $outAmt = max(0, round($invTotal - $paidAmt, 2));
+        $payStatus = $outAmt <= 0.01 ? 'PAID' : ($paidAmt > 0 ? 'PARTIAL' : 'UNPAID');
+        $db->prepare("UPDATE purchase_register SET gst_amount = :gst, paid_amount = :paid, outstanding_amount = :out, payment_status = :status WHERE id = :id")
+           ->execute(['gst' => $gstAmt, 'paid' => $paidAmt, 'out' => $outAmt, 'status' => $payStatus, 'id' => $id]);
         self::postAccounting($id, $data);
+        self::postInventoryAndDaily($id, $data);
+        $db->commit();
         return self::findById($id);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
+        }
     }
 
     public static function update(int $id, array $data): array {
         $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
 
         $existing = self::findById($id);
         if (!$existing) {
@@ -468,45 +489,117 @@ class PurchaseRegister {
         $gstAmt = max(0, (float)($merged['gst_amount'] ?? 0));
         $db->prepare("UPDATE purchase_register SET gst_amount = :gst WHERE id = :id")->execute(['gst' => $gstAmt, 'id' => $id]);
         \Services\VoucherAllocationService::recalculateInvoice('PURCHASE_REGISTER', $id);
+        $paidAmt = array_key_exists('paid_amount', $data)
+            ? min($newTotal, max(0, (float)$data['paid_amount']))
+            : (float)($existing['paid_amount'] ?? 0);
+        $outAmt = max(0, round($newTotal - $paidAmt, 2));
+        $payStatus = $outAmt <= 0.01 ? 'PAID' : ($paidAmt > 0 ? 'PARTIAL' : 'UNPAID');
+        $db->prepare("UPDATE purchase_register SET paid_amount=:paid, outstanding_amount=:out, payment_status=:status WHERE id=:id")
+           ->execute(['paid' => $paidAmt, 'out' => $outAmt, 'status' => $payStatus, 'id' => $id]);
         self::postAccounting($id, $merged);
+        self::postInventoryAndDaily($id, $merged);
+        $db->commit();
         return self::findById($id);
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw $e;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
+        }
     }
 
     public static function softDelete(int $id): bool {
         $db = Database::getConnection();
-        if (\Services\VoucherAllocationService::countActiveAllocationsForInvoice('PURCHASE_REGISTER', $id) > 0) {
-            throw new Exception('Cannot cancel/delete this Purchase Invoice because payment vouchers are allocated against it. Please cancel or unallocate the payment voucher(s) first.');
+        $db->beginTransaction();
+        try {
+            if (\Services\VoucherAllocationService::countActiveAllocationsForInvoice('PURCHASE_REGISTER', $id) > 0) {
+                throw new Exception('Cannot cancel/delete this Purchase Invoice because payment vouchers are allocated against it. Please cancel or unallocate the payment voucher(s) first.');
+            }
+            $row = self::findById($id);
+            if (!$row) {
+                $db->rollBack();
+                return false;
+            }
+            $stmt = $db->prepare("UPDATE purchase_register SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
+            $stmt->execute(['id' => $id]);
+            if ($stmt->rowCount() > 0) {
+                \Services\AccountingEngine::reverseReference('PURCHASE_REGISTER', $id);
+                \Services\InventoryPostingService::reverseMovement('PURCHASE_REGISTER', $id);
+                \Services\InventoryPostingService::reverseDaily('Purchase', (string)$row['voucher_no']);
+                $db->commit();
+                return true;
+            }
+            $db->rollBack();
+            return false;
+        } catch (\Throwable $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            throw new Exception($e->getMessage());
         }
-        $stmt = $db->prepare("UPDATE purchase_register SET deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
-        $stmt->execute(['id' => $id]);
-        if ($stmt->rowCount() > 0) {
-            try { \Services\AccountingEngine::reverseReference('PURCHASE_REGISTER', $id); } catch (\Throwable $e) {}
-            return true;
-        }
-        return false;
     }
 
     private static function postAccounting(int $id, array $data): void {
-        try {
-            $amt = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
-            if ($amt <= 0) return;
-            $gst = max(0, min($amt, (float)($data['gst_amount'] ?? 0)));
-            $taxable = round($amt - $gst, 2);
-            $partyName = trim((string)($data['party_name'] ?? 'Cash Supplier'));
-            $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
-            $partyLedgerId = \Services\PartyLedgerSync::resolveOrCreatePartyLedger($partyName, 'Sundry Creditors (Suppliers)');
-            $purchaseLedgerId = \Services\PartyLedgerSync::getSystemLedger('Purchase Account', 'Purchase Accounts', 'EXPENSE');
-            $narr = 'Purchase ' . ($data['voucher_no'] ?? "#$id") . ' - ' . ($data['particular'] ?? '');
-            $entries = [
-                ['ledger_id' => $purchaseLedgerId, 'debit' => $taxable, 'credit' => 0, 'narration' => $narr],
-                ['ledger_id' => $partyLedgerId, 'debit' => 0, 'credit' => $amt, 'narration' => $narr],
-            ];
-            if ($gst > 0) {
-                $gstLedgerId = \Services\PartyLedgerSync::getSystemLedger('GST Input', 'Duties & Taxes', 'LIABILITY');
-                $entries[] = ['ledger_id' => $gstLedgerId, 'debit' => $gst, 'credit' => 0, 'narration' => "GST Input - $narr"];
-            }
-            \Services\AccountingEngine::postReference('PURCHASE_REGISTER', $id, $date, $entries, $narr);
-        } catch (\Throwable $e) {}
+        $amt = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
+        if ($amt <= 0) {
+            throw new Exception('Purchase amount must be greater than zero.');
+        }
+        $gst = max(0, min($amt, (float)($data['gst_amount'] ?? 0)));
+        $taxable = round($amt - $gst, 2);
+        $paid = min($amt, max(0, (float)($data['paid_amount'] ?? 0)));
+        $partyName = trim((string)($data['party_name'] ?? 'Cash Supplier'));
+        $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+        $partyLedgerId = \Services\PartyLedgerSync::resolveOrCreatePartyLedger($partyName, 'Sundry Creditors (Suppliers)');
+        $purchaseLedgerId = \Services\PartyLedgerSync::getSystemLedger('Purchase Account', 'Purchase Accounts', 'EXPENSE');
+        $narr = 'Purchase ' . ($data['voucher_no'] ?? "#$id") . ' - ' . ($data['particular'] ?? '');
+        $entries = [
+            ['ledger_id' => $purchaseLedgerId, 'debit' => $taxable, 'credit' => 0, 'narration' => $narr],
+        ];
+        if ($gst > 0) {
+            $gstLedgerId = \Services\PartyLedgerSync::getSystemLedger('GST Input', 'Duties & Taxes', 'LIABILITY');
+            $entries[] = ['ledger_id' => $gstLedgerId, 'debit' => $gst, 'credit' => 0, 'narration' => "GST Input - $narr"];
+        }
+        if ($paid > 0) {
+            $paymentMode = strtoupper((string)($data['payment_mode'] ?? 'CASH'));
+            $cashLedgerName = $paymentMode === 'BANK' ? 'Bank Account' : 'Cash in Hand';
+            $cashLedgerId = \Services\PartyLedgerSync::getSystemLedger($cashLedgerName, $paymentMode === 'BANK' ? 'Bank Accounts' : 'Cash-in-hand', 'ASSET');
+            $entries[] = ['ledger_id' => $cashLedgerId, 'debit' => 0, 'credit' => $paid, 'narration' => $narr];
+        }
+        $remaining = round($amt - $paid, 2);
+        if ($remaining > 0) {
+            $entries[] = ['ledger_id' => $partyLedgerId, 'debit' => 0, 'credit' => $remaining, 'narration' => $narr];
+        }
+        \Services\AccountingEngine::postReference('PURCHASE_REGISTER', $id, $date, $entries, $narr);
+    }
+
+    private static function nextVoucherNo(): string {
+        $db = Database::getConnection();
+        $prefix = 'PUR-' . date('Ymd') . '-';
+        $stmt = $db->prepare("SELECT voucher_no FROM purchase_register WHERE voucher_no LIKE :prefix ORDER BY id DESC LIMIT 1");
+        $stmt->execute(['prefix' => $prefix . '%']);
+        $last = $stmt->fetchColumn();
+        $seq = $last ? ((int)substr((string)$last, strlen($prefix)) + 1) : 1;
+        return $prefix . str_pad((string)$seq, 4, '0', STR_PAD_LEFT);
+    }
+
+    private static function postInventoryAndDaily(int $id, array $data): void {
+        $row = self::findById($id);
+        $voucherNo = trim((string)($data['voucher_no'] ?? ($row['voucher_no'] ?? "#$id")));
+        $date = self::normalizeDate($data['voucher_date'] ?? null) ?: date('Y-m-d');
+        $party = trim((string)($data['party_name'] ?? 'Cash Supplier'));
+        $itemName = trim((string)($data['particular'] ?? $data['item_name'] ?? 'Purchase Item'));
+        $itemCode = trim((string)($data['item_code'] ?? ''));
+        $amount = max(0, (float)($data['amount'] ?? $data['purchase_value'] ?? 0));
+        $narration = 'Purchase ' . $voucherNo;
+
+        \Services\InventoryPostingService::postMovement(
+            'PURCHASE_REGISTER', $id, 'PURCHASE', $itemName, $itemCode,
+            (float)($data['pieces'] ?? 0), (float)($data['gross_weight'] ?? 0),
+            (float)($data['net_weight'] ?? 0), $date, $narration
+        );
+        \Services\InventoryPostingService::postDaily(
+            'Purchase', $party, $voucherNo, $date, $amount,
+            (float)($data['gross_weight'] ?? 0), (float)($data['net_weight'] ?? 0), $narration
+        );
     }
 
     public static function filterOptions(): array {

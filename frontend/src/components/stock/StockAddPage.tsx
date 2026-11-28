@@ -22,7 +22,7 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
 
   // Form states matching stock_status table
   const [itemName, setItemName] = useState<string>('');
-  const [unit, setUnit] = useState<string>('Gm');
+  const [unit, setUnit] = useState<string>('');
   const [pc, setPc] = useState<string>('');
   const [grossWeight, setGrossWeight] = useState<string>('');
   const [netWeight, setNetWeight] = useState<string>('');
@@ -34,7 +34,7 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
   const [total, setTotal] = useState<string>('');
   const [goldFine, setGoldFine] = useState<string>('');
 
-  const [availableUnits, setAvailableUnits] = useState<string[]>(['Gm', 'Pcs']);
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -42,7 +42,7 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
   useEffect(() => {
     fetchStockStatusUnits()
       .then((units) => {
-        if (units && units.length > 0) setAvailableUnits(units);
+        setAvailableUnits(units || []);
       })
       .catch((err) => console.error('Failed to load units:', err));
   }, []);
@@ -260,30 +260,21 @@ export const StockAddPage: React.FC<StockAddPageProps> = ({ onBackToList }) => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Unit <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    name="unit"
-                    list="units-list"
+                  <select
                     value={unit}
-                    onChange={(e) => {
-                      setUnit(e.target.value);
-                      clearError('unit');
-                    }}
-                    onBlur={() => {
-                      if (!unit.trim()) {
-                        setFieldErrors((prev) => ({ ...prev, unit: 'This field is required.' }));
-                      }
-                    }}
-                    placeholder="e.g. Gm, Pcs"
-                    className={`w-full px-3 py-2 text-sm rounded-lg border bg-white font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500 ${
+                    onChange={(e) => { setUnit(e.target.value); clearError('unit'); }}
+                    className={`w-full px-3 py-2 rounded-lg border border-slate-300 text-xs focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 focus:text-slate-900 ${
                       fieldErrors.unit ? 'border-red-400 bg-red-50' : 'border-slate-300'
                     }`}
-                  />
-                  <datalist id="units-list">
+                  >
+                    <option value="">Select Unit</option>
+                    {unit && !availableUnits.some((u) => u.toLowerCase() === unit.toLowerCase()) && (
+                      <option value={unit}>{unit} (Existing)</option>
+                    )}
                     {availableUnits.map((u) => (
-                      <option key={u} value={u} />
+                      <option key={u} value={u}>{u}</option>
                     ))}
-                  </datalist>
+                  </select>
                   {fieldErrors.unit && (
                     <p className="text-[11px] text-red-500 mt-1">{fieldErrors.unit}</p>
                   )}

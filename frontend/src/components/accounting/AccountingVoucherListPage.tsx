@@ -344,8 +344,8 @@ export const AccountingVoucherListPage: React.FC<Props> = ({ onAdd, onView, onBa
                     <td className="px-4 py-3 text-slate-500 dark:text-slate-400 max-w-[200px] truncate">{v.narration || '—'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${v.status === 'POSTED' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
-                          : v.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'
-                            : 'bg-slate-100 text-slate-500'
+                        : v.status === 'CANCELLED' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400'
+                          : 'bg-slate-100 text-slate-500'
                         }`}>{v.status}</span>
                     </td>
                     <td className="px-4 py-3">

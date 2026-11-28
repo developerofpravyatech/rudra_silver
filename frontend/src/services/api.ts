@@ -25,6 +25,68 @@ export async function fetchDashboardSummary(): Promise<{
   if (!res.ok) throw new Error('Failed to load dashboard summary');
   return res.json();
 }
+
+export interface DashboardOverviewData {
+  range: { from: string; to: string };
+  counts: {
+    customers: number;
+    suppliers: number;
+    karigars: number;
+    items: number;
+  };
+  daily_balance: Array<{
+    date: string;
+    label: string;
+    receipt: number;
+    payment: number;
+    closing_balance: number;
+  }>;
+  account_summary: {
+    cash: number;
+    bank: number;
+    others: number;
+    total: number;
+    cash_pct: number;
+    bank_pct: number;
+    others_pct: number;
+  };
+  recent_vouchers: Array<{
+    id: number;
+    voucher_date: string;
+    voucher_type: string;
+    voucher_no: number | string;
+    series: string | null;
+    net_amount: number | string;
+    party_name: string;
+  }>;
+  rate_trend: {
+    period: string;
+    points: Array<{
+      date: string;
+      label: string;
+      gold_rate: number;
+      silver_rate: number;
+    }>;
+    latest: {
+      date: string;
+      gold_rate: number;
+      silver_rate: number;
+      gold_unit: string;
+      silver_unit: string;
+    } | null;
+  };
+}
+
+export async function fetchDashboardOverview(
+  from: string,
+  to: string,
+  ratePeriod: '7d' | '15d' | '30d' | '3m' | '6m' | '1y' = '30d'
+): Promise<DashboardOverviewData> {
+  const qs = new URLSearchParams({ from, to, rate_period: ratePeriod });
+  const res = await fetch(`${API_BASE}/dashboard/overview?${qs.toString()}`);
+  if (!res.ok) throw new Error('Failed to load dashboard overview');
+  return res.json();
+}
 export async function fetchInvoiceDetail(id: number): Promise<any> {
   const res = await fetch(`${API_BASE}/invoices/${id}`, {
     headers: getAuthHeaders(),
@@ -39,6 +101,106 @@ export async function fetchRecentInvoices(limit = 5): Promise<any[]> {
   if (!res.ok) throw new Error('Failed to load invoices');
   const data = await res.json();
   return data.items || [];
+}
+
+export interface InvoiceListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  voucher_type?: string;
+  payment_status?: string;
+  from_date?: string;
+  to_date?: string;
+}
+
+export interface InvoiceListResponse {
+  items: any[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// Supports the object query used by Invoice History and the existing
+// positional arguments used by the Dashboard.
+export function fetchInvoicesPaginated(
+  params?: InvoiceListQuery
+): Promise<InvoiceListResponse>;
+export function fetchInvoicesPaginated(
+  page?: number,
+  limit?: number,
+  search?: string,
+  voucherType?: string,
+  paymentStatus?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<InvoiceListResponse>;
+export async function fetchInvoicesPaginated(
+  pageOrParams: number | InvoiceListQuery = 1,
+  limit = 5,
+  search?: string,
+  voucherType?: string,
+  paymentStatus?: string,
+  fromDate?: string,
+  toDate?: string
+): Promise<InvoiceListResponse> {
+  const params: InvoiceListQuery = typeof pageOrParams === 'object'
+    ? pageOrParams
+    : {
+        page: pageOrParams,
+        limit,
+        search,
+        voucher_type: voucherType,
+        payment_status: paymentStatus,
+        from_date: fromDate,
+        to_date: toDate,
+      };
+
+  const currentPage = Math.max(1, Number(params.page || 1));
+  const pageLimit = Math.max(1, Math.min(100, Number(params.limit || 5)));
+  const qs = new URLSearchParams({
+    page: String(currentPage),
+    limit: String(pageLimit),
+  });
+  if (params.search?.trim()) qs.set('search', params.search.trim());
+  if (params.voucher_type && params.voucher_type !== 'ALL') {
+    qs.set('voucher_type', params.voucher_type);
+  }
+  if (params.payment_status && params.payment_status !== 'ALL') {
+    qs.set('payment_status', params.payment_status);
+  }
+  if (params.from_date) qs.set('from_date', params.from_date);
+  if (params.to_date) qs.set('to_date', params.to_date);
+
+  const res = await fetch(`${API_BASE}/invoices?${qs.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.message || data?.error || 'Failed to load invoices');
+  }
+  const total = Number(data.total || 0);
+  const responsePage = Number(data.page || currentPage);
+  const responseLimit = Number(data.limit || pageLimit);
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total,
+    page: responsePage,
+    limit: responseLimit,
+    totalPages: Math.max(1, Math.ceil(total / responseLimit)),
+  };
+}
+
+export async function deleteInvoice(id: number): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/v1/vouchers/${id}`, {
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || 'Failed to delete invoice');
+  }
+  return res.json();
 }
 
 export async function fetchTransactions(params: { page?: number; limit?: number; search?: string } = {}): Promise<{ items: any[]; total: number; page: number; limit: number }> {
@@ -648,7 +810,24 @@ export async function deleteCategoryApi(id: number): Promise<{ success: boolean;
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || err.message || 'Failed to delete category.');
+    const errorMsg = err.detail || err.message || 'Failed to delete category.';
+
+    // If route parameter not extracted, try alternative endpoint
+    if (res.status === 400) {
+      const bodyRes = await fetch(`${API_BASE}/categories/delete`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      });
+      if (bodyRes.ok) {
+        return bodyRes.json();
+      }
+    }
+
+    throw new Error(errorMsg);
   }
   return res.json();
 }
@@ -937,12 +1116,20 @@ export async function fetchStockDropdownOptions(): Promise<StockDropdownOptions>
 
 export async function fetchStockStatusList(params: StockStatusFilterParams = {}): Promise<PaginatedStockStatus> {
   const qs = new URLSearchParams();
-  if (params.search) qs.set('search', params.search);
-  if (params.unit && params.unit !== 'all') qs.set('unit', params.unit);
-  if (params.sort_by) qs.set('sort_by', params.sort_by);
-  if (params.sort_order) qs.set('sort_order', params.sort_order);
+  const stringParams: Array<keyof StockStatusFilterParams> = [
+    'search', 'unit', 'sort_by', 'sort_order', 'type_wise_group', 'status_filter',
+    'item_type', 'item_name_filter', 'date_from', 'date_to', 'approval_flag',
+    'entry_wise_flag', 'kachi_list', 'item_wise_filter', 'item_dropdown',
+  ];
+  stringParams.forEach((key) => {
+    const value = params[key];
+    if (typeof value === 'string' && value.trim() && value !== 'all' && value !== 'ALL GROUP' && value !== 'ALL ITEM') {
+      qs.set(key, value);
+    }
+  });
   if (params.page) qs.set('page', String(params.page));
   if (params.limit) qs.set('limit', String(params.limit));
+  if (params.all_records) qs.set('all_records', '1');
 
   const res = await fetch(`/api/stock-status/list?${qs.toString()}`, {
     headers: getAuthHeaders(),
@@ -1004,17 +1191,42 @@ export async function deleteStockStatus(id: number): Promise<{ success: boolean;
 }
 
 export async function fetchStockStatusUnits(): Promise<string[]> {
-  const res = await fetch(`/api/stock-status/units`, {
-    headers: getAuthHeaders(),
+  // Unit Master is the source of truth. Keep legacy unit labels already used
+  // by stock_status records so older records remain selectable/filterable.
+  const [masterResult, legacyResult] = await Promise.allSettled([
+    fetchUnitsActive(),
+    fetch(`/api/stock-status/units`, { headers: getAuthHeaders() }).then(async (res) => {
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data.map((value: unknown) => String(value)) : [];
+    }),
+  ]);
+
+  const masterUnits = masterResult.status === 'fulfilled'
+    ? masterResult.value.map((unit) => unit.name).filter(Boolean)
+    : [];
+  const legacyUnits = legacyResult.status === 'fulfilled' ? legacyResult.value : [];
+  const unique = new Map<string, string>();
+  [...masterUnits, ...legacyUnits].forEach((name) => {
+    const trimmed = String(name || '').trim();
+    if (trimmed && !unique.has(trimmed.toLowerCase())) unique.set(trimmed.toLowerCase(), trimmed);
   });
-  if (!res.ok) return ['Gm', 'Pcs'];
-  return res.json();
+  return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
 }
 
-export async function fetchStockStatusAll(params: { search?: string; unit?: string } = {}): Promise<StockStatusRecord[]> {
+export async function fetchStockStatusAll(params: StockStatusFilterParams = {}): Promise<StockStatusRecord[]> {
   const qs = new URLSearchParams();
-  if (params.search) qs.set('search', params.search);
-  if (params.unit && params.unit !== 'all') qs.set('unit', params.unit);
+  const stringParams: Array<keyof StockStatusFilterParams> = [
+    'search', 'unit', 'type_wise_group', 'status_filter', 'item_type', 'item_name_filter',
+    'date_from', 'date_to', 'approval_flag', 'entry_wise_flag', 'kachi_list',
+    'item_wise_filter', 'item_dropdown',
+  ];
+  stringParams.forEach((key) => {
+    const value = params[key];
+    if (typeof value === 'string' && value.trim() && value !== 'all' && value !== 'ALL GROUP' && value !== 'ALL ITEM') {
+      qs.set(key, value);
+    }
+  });
 
   const res = await fetch(`/api/stock-status/export-all?${qs.toString()}`, {
     headers: getAuthHeaders(),
@@ -2743,6 +2955,56 @@ export async function fetchCashBook(from?: string, to?: string): Promise<LedgerP
   const res = await fetch(`/api/reports/cash-book?${qs.toString()}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error('Failed to load cash book.');
   const json = await res.json();
+  return json.data;
+}
+
+export interface CashBookSideEntry {
+  id: number;
+  voucher_id: number | null;
+  date: string;
+  voucher_no: string;
+  voucher_type: string;
+  account_name: string;
+  sub_account: string;
+  particular: string;
+  amount: number;
+}
+
+export interface CashBookDetailedResponse {
+  from: string;
+  to: string;
+  opening_balance: number;
+  credit_entries: CashBookSideEntry[];
+  debit_entries: CashBookSideEntry[];
+  credit_total: number;
+  debit_total: number;
+  day_difference: number;
+  closing_balance: number;
+  options: {
+    groups: Array<{ id: number; name: string }>;
+    parties: Array<{ id: number; ledger_name: string; group_id: number; city?: string }>;
+    cities: string[];
+    users: Array<{ id: number; name: string }>;
+  };
+}
+
+export async function fetchDetailedCashBook(params: {
+  from: string;
+  to: string;
+  group_id?: string;
+  ledger_id?: string;
+  city?: string;
+  user_id?: string;
+}): Promise<CashBookDetailedResponse> {
+  const qs = new URLSearchParams({ detailed: '1', from: params.from, to: params.to });
+  if (params.group_id && params.group_id !== 'ALL') qs.set('group_id', params.group_id);
+  if (params.ledger_id && params.ledger_id !== 'ALL') qs.set('ledger_id', params.ledger_id);
+  if (params.city && params.city !== 'ALL') qs.set('city', params.city);
+  if (params.user_id && params.user_id !== 'ALL') qs.set('user_id', params.user_id);
+  const res = await fetch(`/api/reports/cash-book?${qs.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error('Failed to load cash book.');
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to load cash book.');
   return json.data;
 }
 

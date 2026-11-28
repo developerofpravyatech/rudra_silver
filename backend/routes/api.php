@@ -74,6 +74,7 @@ function registerRoutes(Router $router): void {
     $router->get('/api/v1/rates/today', [DashboardController::class, 'getTodayRates']);
     $router->get('/api/v1/daily-summary', [DashboardController::class, 'getDailySummary']);
     $router->get('/api/v1/dashboard/summary', [DashboardController::class, 'getDashboardSummary']);
+    $router->get('/api/v1/dashboard/overview', [DashboardController::class, 'getOverview']);
     $router->get('/api/v1/daily-balance', [DashboardController::class, 'getDailyBalance']);
     $router->get('/api/v1/sales/overview', [DashboardController::class, 'getSalesOverview']);
     $router->get('/api/v1/stock-status', [DashboardController::class, 'getStockStatus']);
